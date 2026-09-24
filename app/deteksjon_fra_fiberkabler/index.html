@@ -1,0 +1,545 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Deteksjon fra fiberkabler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --outer:#D9D7CF;
+  --land:#F1EFE8; --forest:#D4E6C9; --water:#AAD3EC; --water-ink:#3B72A0;
+  --road:#FFFFFF; --road-case:#D3CFC3; --road-main:#FBE2A0; --road-main-case:#DDBB60;
+  --building:#E2DDD1; --label:#4E5651; --label-strong:#2B312E; --contour:#CBC4B1; --rock:#E4DFD2;
+  --route:#2B6BE6; --route-case:#1A4FB5; --hazard:#D93025; --hazard-soft:rgba(217,48,37,.22);
+  --nav:#0E5A48; --nav-ink:#FFFFFF; --nav-sub:#BFE3D8;
+  --sheet:#FFFFFF; --ink:#1E2421; --muted:#5F6964; --line:#E3E1DA; --ok:#1B8A4C;
+  --chip:#FFFFFF;
+  --f:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --outer:#0B0E0F;
+    --land:#1E2326; --forest:#22322A; --water:#10263A; --water-ink:#7FAAD0;
+    --road:#3A4246; --road-case:#2A3134; --road-main:#62583A; --road-main-case:#7A6C42;
+    --building:#2A3134; --label:#AEB8B3; --label-strong:#DDE4E1; --contour:#343C3F; --rock:#262C2F;
+    --route:#6FA0FF; --route-case:#3565C9; --hazard:#FF6456; --hazard-soft:rgba(255,100,86,.25);
+    --nav:#0F4A3D; --nav-ink:#F2FBF8; --nav-sub:#9FD1C2;
+    --sheet:#1A1F21; --ink:#E6ECE9; --muted:#9BA6A1; --line:#2C3336; --ok:#5BD08F;
+    --chip:#252B2E;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --outer:#0B0E0F;
+  --land:#1E2326; --forest:#22322A; --water:#10263A; --water-ink:#7FAAD0;
+  --road:#3A4246; --road-case:#2A3134; --road-main:#62583A; --road-main-case:#7A6C42;
+  --building:#2A3134; --label:#AEB8B3; --label-strong:#DDE4E1; --contour:#343C3F; --rock:#262C2F;
+  --route:#6FA0FF; --route-case:#3565C9; --hazard:#FF6456; --hazard-soft:rgba(255,100,86,.25);
+  --nav:#0F4A3D; --nav-ink:#F2FBF8; --nav-sub:#9FD1C2;
+  --sheet:#1A1F21; --ink:#E6ECE9; --muted:#9BA6A1; --line:#2C3336; --ok:#5BD08F;
+  --chip:#252B2E;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--outer);color:var(--ink);font:15px/1.35 var(--f);-webkit-font-smoothing:antialiased}
+.stage{height:100%;display:flex;justify-content:center;align-items:center}
+.phone{position:relative;width:100%;max-width:440px;height:100%;overflow:hidden;background:var(--land)}
+@media (min-width:640px) and (min-height:760px){
+  .phone{height:min(880px,calc(100% - 48px));border-radius:34px;border:10px solid #121516;box-shadow:0 30px 80px rgba(0,0,0,.25)}
+}
+#map{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+/* Kartlag */
+.land{fill:var(--land)}
+.water{fill:var(--water)}
+.river{fill:none;stroke:var(--water);stroke-width:6;stroke-linecap:round}
+.forest{fill:var(--forest)}
+.contour{fill:none;stroke:var(--contour);stroke-width:1.2}
+.rockfill{fill:var(--rock)}
+.bld{fill:var(--building)}
+.case{fill:none;stroke:var(--road-case);stroke-linecap:round;stroke-linejoin:round}
+.rd{fill:none;stroke:var(--road);stroke-linecap:round;stroke-linejoin:round}
+.case.main{stroke:var(--road-main-case)}
+.rd.main{stroke:var(--road-main)}
+.route-case{fill:none;stroke:var(--route-case);stroke-width:11;stroke-linecap:round;stroke-linejoin:round}
+.route{fill:none;stroke:var(--route);stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+.hz-base{fill:none;stroke:var(--hazard);stroke-width:13;stroke-linecap:butt}
+.hz-dash{fill:none;stroke:#fff;stroke-width:3;stroke-dasharray:7 7}
+.hz-ring{fill:var(--hazard-soft);transform-box:fill-box;transform-origin:center;animation:pulse 1.6s ease-out infinite}
+.hz-dot{fill:var(--hazard);stroke:#fff;stroke-width:2.5}
+@keyframes pulse{from{transform:scale(.6);opacity:1}to{transform:scale(2.4);opacity:0}}
+@media (prefers-reduced-motion: reduce){.hz-ring{animation:none;opacity:.6}}
+text{font-family:var(--f)}
+.t-road{font-size:11px;font-weight:600;fill:var(--label);stroke:var(--land);stroke-width:3.5px;paint-order:stroke;letter-spacing:.02em}
+.t-main{font-size:11.5px;font-weight:700;fill:var(--label-strong)}
+.t-water{font-size:13px;font-style:italic;font-weight:500;fill:var(--water-ink);letter-spacing:.14em}
+.t-river{font-size:10.5px;font-style:italic;font-weight:500;fill:var(--water-ink);stroke:var(--land);stroke-width:3px;paint-order:stroke}
+.t-place{font-size:15px;font-weight:700;fill:var(--label-strong);stroke:var(--land);stroke-width:4px;paint-order:stroke}
+.t-peak{font-size:11px;font-style:italic;font-weight:500;fill:var(--label);stroke:var(--land);stroke-width:3px;paint-order:stroke}
+.t-hz{font-size:13px;font-weight:800;fill:var(--hazard);stroke:var(--land);stroke-width:4px;paint-order:stroke}
+.t-hz2{font-size:11px;font-weight:600;fill:var(--hazard);stroke:var(--land);stroke-width:3.5px;paint-order:stroke}
+.dest{fill:var(--route-case);stroke:#fff;stroke-width:2}
+
+/* Navigasjonskort */
+.top{position:absolute;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));display:grid;gap:8px;z-index:3}
+.navcard{display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px;align-items:center;background:var(--nav);color:var(--nav-ink);border-radius:16px;padding:12px 16px 13px 12px;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.navcard svg{width:40px;height:40px;display:block}
+.navdist{font-size:25px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+.navtxt{font-size:15px;color:var(--nav-sub);margin-top:2px}
+.navtxt b{color:var(--nav-ink);font-weight:700}
+.hzchip{cursor:pointer;justify-self:start;display:flex;align-items:center;gap:8px;background:var(--chip);color:var(--ink);border-radius:999px;padding:7px 14px 7px 8px;font-size:13.5px;font-weight:500;box-shadow:0 3px 10px rgba(0,0,0,.14);max-width:100%}
+.hzchip i{flex:none;width:22px;height:22px;border-radius:50%;background:var(--hazard);display:grid;place-items:center}
+.hzchip i svg{width:14px;height:14px}
+.hzchip b{color:var(--hazard);font-weight:700}
+.hzchip.info i{background:var(--route)}
+.hzchip.info b{color:var(--route)}
+
+/* Varsel */
+.notif{position:absolute;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top,0px));z-index:5;background:color-mix(in srgb,var(--sheet) 94%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:22px;padding:14px 16px 14px;box-shadow:0 14px 40px rgba(0,0,0,.28);transform:translateY(calc(-100% - 30px));transition:transform .45s cubic-bezier(.2,.9,.25,1.1);display:grid;gap:8px}
+.notif.show{transform:none}
+@media (prefers-reduced-motion: reduce){.notif{transition:none}}
+.n-head{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.n-head .ic{width:22px;height:22px;border-radius:6px;background:var(--hazard);display:grid;place-items:center}
+.n-head .ic svg{width:14px;height:14px}
+.n-head time{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500}
+.n-title{font-size:17px;font-weight:800;line-height:1.2;text-wrap:balance}
+.n-body{font-size:14px;color:var(--muted);margin:0}
+.n-acts{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:4px}
+.btn{font:700 14.5px var(--f);border:0;border-radius:999px;padding:11px 16px;cursor:pointer;background:var(--line);color:var(--ink)}
+.btn.primary{background:var(--route-case);color:#fff}
+:focus-visible{outline:3px solid var(--route);outline-offset:2px}
+
+/* Fart */
+.speed{position:absolute;left:12px;z-index:2;display:flex;gap:8px;align-items:center}
+.spd{width:60px;height:60px;border-radius:50%;background:var(--chip);box-shadow:0 3px 10px rgba(0,0,0,.15);display:grid;place-items:center;text-align:center;line-height:1}
+.spd b{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;display:block}
+.spd small{font-size:10px;color:var(--muted);font-weight:600}
+.limit{width:42px;height:42px;border-radius:50%;background:#fff;border:5px solid #D2231C;display:grid;place-items:center;font-weight:800;font-size:16px;color:#111;box-shadow:0 3px 10px rgba(0,0,0,.15)}
+
+/* Bunnark */
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:3;background:var(--sheet);border-radius:22px 22px 0 0;padding:8px 20px calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 22px rgba(0,0,0,.14);display:grid;gap:10px}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--line);justify-self:center}
+.eta{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.eta-main{display:grid;gap:2px;min-width:0}
+.eta-big{font-size:26px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums;line-height:1.1}
+.eta-big.bad{color:var(--hazard)}
+.eta-sub{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.via{font-size:13.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.via b{color:var(--ink);font-weight:600}
+.btn.restart{padding:10px 16px;font-size:14px;flex:none}
+</style>
+
+<div class="stage">
+  <div class="phone" id="phone">
+    <svg id="map" role="img" aria-label="Kart med rute langs Fv 1842 Lyngdalsvegen mot Holmvik havn">
+      <g id="world"></g>
+    </svg>
+
+    <div class="top">
+      <div class="navcard" id="navcard" aria-live="polite">
+        <svg id="navIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5M6 11l6-6 6 6"/></svg>
+        <div>
+          <div class="navdist" id="navDist">3,9 km</div>
+          <div class="navtxt" id="navTxt">Følg <b>Lyngdalsvegen</b></div>
+        </div>
+      </div>
+      <div class="hzchip" id="hzChip" role="button" tabindex="0" hidden>
+        <i id="hzChipIc"><svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M3 19 8 10l4 4 4-8 5 13z"/></svg></i>
+        <span id="hzChipTxt"></span>
+      </div>
+    </div>
+
+    <div class="notif" id="notif" role="alert" aria-hidden="true">
+      <div class="n-head">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M3 19 8 10l4 4 4-8 5 13z"/></svg></span>
+        Deteksjon fra fiberkabler
+        <time>nå</time>
+      </div>
+      <div class="n-title">Steinras i vegen 500 m foran deg</div>
+      <p class="n-body" id="nBody">Fiberkabelen langs Fv 1842 har registrert et steinras ved Skarvberget. Vegen er sperret.</p>
+      <div class="n-acts">
+        <button class="btn primary" type="button" id="nReroute">Kjør omkjøring</button>
+        <button class="btn" type="button" id="nClose">Lukk</button>
+      </div>
+    </div>
+
+    <div class="speed" id="speed">
+      <div class="spd"><span><b id="spdVal">62</b><small>km/t</small></span></div>
+      <div class="limit" id="limit">60</div>
+    </div>
+
+    <div class="sheet" id="sheet">
+      <div class="grab"></div>
+      <div class="eta">
+        <div class="eta-main">
+          <div class="eta-big" id="etaBig">4 min</div>
+          <div class="eta-sub" id="etaSub">3,9 km · ankomst 06:52</div>
+        </div>
+        <button class="btn restart" type="button" id="restart">Start på nytt</button>
+      </div>
+      <div class="via"><span id="viaTxt">Via <b>Fv 1842 Lyngdalsvegen</b></span><span>Fiktiv demo · steder og data er oppdiktet</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = id => document.getElementById(id);
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+
+  const M_PER_UNIT = 2.5;           // 1 kartenhet = 2,5 m
+  const BASE_MIN = 6 * 60 + 48;     // klokka 06:48
+  const world = $("world");
+  const L = {};
+  ["land", "water", "forest", "terrain", "blds", "cases", "roads", "hazard", "routeCase", "route", "labels", "marks"]
+    .forEach(n => L[n] = el("g", {}, world));
+  el("rect", { x: -1500, y: -1500, width: 4000, height: 6000, class: "land" }, L.land);
+
+  // ---------- Hovedvegen ----------
+  const MAIN_D = "M 470 2700 C 480 2550, 430 2450, 440 2300 S 500 2050, 480 1900 S 420 1650, 440 1500 S 500 1250, 480 1100 S 420 850, 440 700 S 480 450, 460 300 S 440 120, 450 0";
+  const mainCase = el("path", { d: MAIN_D, class: "case main", "stroke-width": 15, id: "mainPath" }, L.cases);
+  el("path", { d: MAIN_D, class: "rd main", "stroke-width": 10 }, L.roads);
+
+  const STEP = 4;
+  function sample(p) {
+    const len = p.getTotalLength(), pts = [];
+    for (let s = 0; s < len; s += STEP) { const q = p.getPointAtLength(s); pts.push({ x: q.x, y: q.y }); }
+    const q = p.getPointAtLength(len); pts.push({ x: q.x, y: q.y });
+    return pts;
+  }
+  const main = sample(mainCase);
+  const MAIN_LEN = (main.length - 2) * STEP + Math.hypot(main[main.length - 1].x - main[main.length - 2].x, main[main.length - 1].y - main[main.length - 2].y);
+  function mainAt(s) {
+    s = Math.max(0, Math.min(MAIN_LEN, s));
+    const i = Math.min(main.length - 2, Math.floor(s / STEP)), t = Math.min(1, (s - i * STEP) / STEP);
+    return { x: main[i].x + (main[i + 1].x - main[i].x) * t, y: main[i].y + (main[i + 1].y - main[i].y) * t };
+  }
+  function mainSlice(a, b) {
+    const out = [mainAt(a)];
+    if (a < b) { for (let i = Math.ceil(a / STEP + 1e-6); i * STEP < b; i++) out.push(main[i]); }
+    else { for (let i = Math.floor(a / STEP - 1e-6); i * STEP > b; i--) out.push(main[i]); }
+    out.push(mainAt(b));
+    return out;
+  }
+
+  // Viktige punkter langs hovedvegen (i kartenheter)
+  const LS = 1450;            // steinraset
+  const SJ1 = LS - 130;       // avkjøring Kvernhusvegen
+  const SJ2 = LS + 430;       // påkjøring fra Rognlivegen
+  const S_START = LS - 360;
+  const S_END = MAIN_LEN - 70;
+  const ALERT_AT = LS - 200;  // 500 m før raset
+  const STOP_AT = LS - 70;
+  const RIVER_AT = LS - 290;
+
+  // ---------- Vann (fjorden vest for vegen) ----------
+  let shore = "M -1500 3200 L " + (mainAt(0).x - 70) + " 3200";
+  for (let s = 0; s <= MAIN_LEN; s += 20) {
+    const p = mainAt(s);
+    shore += " L " + (p.x - 58 - 22 * Math.sin(p.y / 95) - 10 * Math.sin(p.y / 31)).toFixed(1) + " " + p.y.toFixed(1);
+  }
+  shore += " L " + (mainAt(MAIN_LEN).x - 70) + " -1500 L -1500 -1500 Z";
+  el("path", { d: shore, class: "water" }, L.water);
+
+  // ---------- Omkjøringsvegen ----------
+  const p1 = mainAt(SJ1), p2 = mainAt(SJ2), pr = mainAt(LS);
+  const corner = { x: p1.x + 235, y: p1.y - 70 };
+  const DET_D = `M ${p1.x} ${p1.y} C ${p1.x + 110} ${p1.y + 2}, ${p1.x + 235} ${p1.y - 5}, ${corner.x} ${corner.y} L ${p2.x + 240} ${p2.y + 80} C ${p2.x + 240} ${p2.y + 20}, ${p2.x + 120} ${p2.y + 2}, ${p2.x} ${p2.y}`;
+  const detCase = el("path", { d: DET_D, class: "case", "stroke-width": 11 }, L.cases);
+  el("path", { d: DET_D, class: "rd", "stroke-width": 7, id: "detPath" }, L.roads);
+  const detour = sample(detCase);
+
+  // Andre småveger
+  function minor(d, name, off) {
+    el("path", { d, class: "case", "stroke-width": 10 }, L.cases);
+    const r = el("path", { d, class: "rd", "stroke-width": 6.5, id: "r" + Math.round(rnd() * 1e9) }, L.roads);
+    if (name) {
+      const t = el("text", { class: "t-road", dy: 4 }, L.labels);
+      const tp = el("textPath", { href: "#" + r.id, startOffset: off || "30%" }, t);
+      tp.textContent = name;
+    }
+  }
+  minor(`M ${corner.x} ${corner.y} C ${corner.x + 120} ${corner.y + 10}, ${corner.x + 260} ${corner.y - 40}, ${corner.x + 420} ${corner.y - 30}`, "Kvernhusvegen", "25%");
+  [[300, "Moavegen"], [780, "Bakkevegen"], [2250, "Liavegen"], [2520, ""]].forEach(([s, n]) => {
+    const p = mainAt(s);
+    minor(`M ${p.x} ${p.y} C ${p.x + 80} ${p.y - 6}, ${p.x + 160} ${p.y + 30}, ${p.x + 300} ${p.y + 20}`, n, "35%");
+  });
+
+  // ---------- Elv ----------
+  const rv = mainAt(RIVER_AT);
+  const RIV_D = `M ${rv.x + 700} ${rv.y + 150} C ${rv.x + 450} ${rv.y + 110}, ${rv.x + 220} ${rv.y + 30}, ${rv.x} ${rv.y} L ${rv.x - 110} ${rv.y - 12}`;
+  el("path", { d: RIV_D, class: "river", id: "river" }, L.water);
+  const rt = el("text", { class: "t-river", dy: -6 }, L.labels);
+  el("textPath", { href: "#river", startOffset: "32%" }, rt).textContent = "Tverrelva";
+
+  // ---------- Skog ----------
+  for (let i = 0; i < 70; i++) {
+    const s = rnd() * MAIN_LEN, p = mainAt(s);
+    const x = p.x + 70 + rnd() * 650, y = p.y + (rnd() - 0.5) * 120;
+    if (Math.hypot(x - (pr.x + 130), y - pr.y) < 110) continue; // ikke over fjellet
+    el("ellipse", { cx: x, cy: y, rx: 40 + rnd() * 90, ry: 30 + rnd() * 60, class: "forest" }, L.forest);
+  }
+
+  // ---------- Skarvberget ----------
+  const mc = { x: pr.x + 125, y: pr.y - 10 };
+  [[112, 88, 0], [86, 66, 1], [60, 46, 1], [36, 27, 1], [14, 10, 1]].forEach(([rx, ry, c], i) => {
+    el("ellipse", { cx: mc.x + i * 4, cy: mc.y - i * 3, rx, ry, transform: `rotate(-18 ${mc.x} ${mc.y})`, class: i === 0 ? "rockfill" : "contour" }, L.terrain);
+    if (i === 0) el("ellipse", { cx: mc.x, cy: mc.y, rx, ry, transform: `rotate(-18 ${mc.x} ${mc.y})`, class: "contour" }, L.terrain);
+  });
+  const pk = el("text", { x: mc.x + 18, y: mc.y - 4, class: "t-peak", "text-anchor": "middle" }, L.labels);
+  pk.textContent = "Skarvberget";
+  const pk2 = el("text", { x: mc.x + 18, y: mc.y + 10, class: "t-peak", "text-anchor": "middle" }, L.labels);
+  pk2.textContent = "412";
+
+  // ---------- Holmvik ----------
+  const end = mainAt(S_END), top = mainAt(MAIN_LEN);
+  [[end.y + 30], [end.y - 70], [end.y - 170]].forEach(([y]) => {
+    minor(`M ${end.x - 20} ${y} L ${end.x + 330} ${y + 8}`);
+  });
+  minor(`M ${end.x + 150} ${end.y + 120} L ${end.x + 160} ${end.y - 260}`);
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 8; c++) {
+    if (rnd() < 0.25) continue;
+    const x = end.x + 22 + c * 38 + (c > 3 ? 18 : 0), y = end.y + 60 - r * 50 + rnd() * 6;
+    el("rect", { x, y: y - 36, width: 24 + rnd() * 8, height: 16 + rnd() * 8, rx: 2, class: "bld" }, L.blds);
+  }
+  const hv = el("text", { x: end.x + 120, y: end.y - 110, class: "t-place" }, L.labels); hv.textContent = "Holmvik";
+  const kv = el("text", { x: corner.x + 120, y: corner.y - 40, class: "t-place", style: "font-size:13px" }, L.labels); kv.textContent = "Kvernhus";
+
+  // Fjordnavn
+  [[LS - 250, "S Ø R V I K F J O R D E N"], [LS + 700, "S Ø R V I K F J O R D E N"]].forEach(([s, n]) => {
+    const p = mainAt(s);
+    const t = el("text", { x: p.x - 200, y: p.y, class: "t-water", "text-anchor": "middle", transform: `rotate(-80 ${p.x - 200} ${p.y})` }, L.labels);
+    t.textContent = n.replace(/ /g, "").split("").join(" ");
+  });
+
+  // Navn på hovedvegen og omkjøringen
+  mainCase.id = "mainPath";
+  [0.08, 0.36, 0.62, 0.86].forEach(o => {
+    const t = el("text", { class: "t-road t-main", dy: 4 }, L.labels);
+    el("textPath", { href: "#mainPath", startOffset: (o * 100) + "%" }, t).textContent = "Fv 1842 Lyngdalsvegen";
+  });
+  const rl = el("text", { class: "t-road", dy: 4 }, L.labels);
+  el("textPath", { href: "#detPath", startOffset: "40%" }, rl).textContent = "Rognlivegen";
+
+  // Destinasjon
+  const dg = el("g", { transform: `translate(${end.x} ${end.y})` }, L.marks);
+  el("path", { d: "M0 0 C -9 -14, -13 -18, -13 -26 A 13 13 0 1 1 13 -26 C 13 -18, 9 -14, 0 0 Z", class: "dest" }, dg);
+  el("circle", { cx: 0, cy: -26, r: 5, fill: "#fff" }, dg);
+
+  // ---------- Fare-markering (vises når raset oppdages) ----------
+  const hzG = el("g", { visibility: "hidden" }, L.hazard);
+  const hzPts = mainSlice(LS - 55, LS + 55).map(p => p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
+  el("polyline", { points: hzPts, class: "hz-base" }, hzG);
+  el("polyline", { points: hzPts, class: "hz-dash" }, hzG);
+  const hzM = el("g", { visibility: "hidden", transform: `translate(${pr.x} ${pr.y})` }, L.marks);
+  el("circle", { r: 16, class: "hz-ring" }, hzM);
+  el("circle", { r: 15, class: "hz-dot" }, hzM);
+  el("path", { d: "M-8 6 L-4 -1 L0 2 L3.5 -5 L8 6 Z", fill: "#fff" }, hzM);
+  el("circle", { cx: -3, cy: -6.5, r: 2, fill: "#fff" }, hzM);
+  const ht1 = el("text", { x: -24, y: -2, class: "t-hz", "text-anchor": "end" }, hzM); ht1.textContent = "Steinras";
+  const ht2 = el("text", { x: -24, y: 12, class: "t-hz2", "text-anchor": "end" }, hzM); ht2.textContent = "Vegen er sperret";
+
+  // ---------- Rute og bil ----------
+  const routeCaseEl = el("path", { class: "route-case" }, L.routeCase);
+  const routeEl = el("path", { class: "route" }, L.route);
+  const car = el("g", {}, L.marks);
+  el("circle", { r: 22, fill: "var(--route)", "fill-opacity": ".16" }, car);
+  el("path", { d: "M0 -12 L9 9 L0 4.5 L-9 9 Z", fill: "var(--route-case)", stroke: "#fff", "stroke-width": 2.5, "stroke-linejoin": "round" }, car);
+
+  function makeRoute(pts, maneuvers, detourFrom, detourTo) {
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    return { pts, cum, len: cum[cum.length - 1], maneuvers, detourFrom, detourTo };
+  }
+  function routeIdx(r, s) {
+    let lo = 0, hi = r.cum.length - 1;
+    while (lo < hi - 1) { const m = (lo + hi) >> 1; if (r.cum[m] <= s) lo = m; else hi = m; }
+    return lo;
+  }
+  function routeAt(r, s) {
+    s = Math.max(0, Math.min(r.len, s));
+    const i = routeIdx(r, s), a = r.pts[i], b = r.pts[Math.min(i + 1, r.pts.length - 1)];
+    const seg = r.cum[Math.min(i + 1, r.cum.length - 1)] - r.cum[i] || 1, t = (s - r.cum[i]) / seg;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, i };
+  }
+
+  // ---------- Tilstand ----------
+  let route, pos, v, rerouted, alerted, notifOpen, uturnWait, arrived, extraMin, cam, heading;
+  function reset() {
+    route = makeRoute(mainSlice(S_START, S_END), [{ at: S_END - S_START, type: "arrive" }], -1, -1);
+    pos = 0; v = 26; rerouted = false; alerted = false; arrived = false; uturnWait = 0; extraMin = 0; heading = 0;
+    hzG.setAttribute("visibility", "hidden"); hzM.setAttribute("visibility", "hidden");
+    showNotif(false); $("hzChip").hidden = true;
+    const p = routeAt(route, 0); cam = { x: p.x, y: p.y };
+  }
+
+  function minutesFor(units, slowUnits) {
+    const fast = (units - slowUnits) * M_PER_UNIT / 1000 / 60 * 60; // 60 km/t
+    const slow = slowUnits * M_PER_UNIT / 1000 / 40 * 60;           // 40 km/t
+    return fast + slow;
+  }
+  const DET_LEN = (() => { let d = 0; for (let i = 1; i < detour.length; i++) d += Math.hypot(detour[i].x - detour[i - 1].x, detour[i].y - detour[i - 1].y); return d; })();
+  const EXTRA = Math.max(1, Math.round(minutesFor(DET_LEN, DET_LEN) - minutesFor(SJ2 - SJ1, 0)));
+  $("nBody").textContent = "Fiberkabelen langs Fv 1842 registrerte raset ved Skarvberget for få sekunder siden. Vegen er sperret. Omkjøring via Kvernhusvegen tar ca. " + EXTRA + " min ekstra.";
+
+  function mainS() { return S_START + pos; }
+
+  function fireAlert() {
+    alerted = true;
+    hzG.setAttribute("visibility", "visible"); hzM.setAttribute("visibility", "visible");
+    showNotif(true);
+    $("hzChip").hidden = false;
+    if (navigator.vibrate) { try { navigator.vibrate([120, 60, 120]); } catch (e) {} }
+  }
+  function showNotif(on) {
+    notifOpen = on;
+    $("notif").classList.toggle("show", on);
+    $("notif").setAttribute("aria-hidden", on ? "false" : "true");
+    $("nReroute").tabIndex = on ? 0 : -1; $("nClose").tabIndex = on ? 0 : -1;
+  }
+  function reroute() {
+    if (rerouted || arrived) return;
+    const m = mainS();
+    const back = m > SJ1 + 1;
+    const seg1 = mainSlice(m, SJ1), seg3 = mainSlice(SJ2, S_END);
+    const pts = seg1.concat(detour.slice(1), seg3.slice(1));
+    const r0 = makeRoute(seg1, [], 0, 0), l1 = r0.len;
+    const man = [];
+    if (back) man.push({ at: 6, type: "uturn" });
+    man.push({ at: l1, type: back ? "left" : "right", road: "Kvernhusvegen" });
+    man.push({ at: l1 + DET_LEN, type: "right", road: "Fv 1842 Lyngdalsvegen" });
+    const r = makeRoute(pts, man, l1, l1 + DET_LEN);
+    r.maneuvers.push({ at: r.len, type: "arrive" });
+    route = r; pos = 0; rerouted = true; extraMin = EXTRA;
+    if (back) { v = 0; uturnWait = 0.9; }
+    showNotif(false);
+  }
+  $("nReroute").addEventListener("click", reroute);
+  $("nClose").addEventListener("click", () => showNotif(false));
+  $("restart").addEventListener("click", reset);
+  // Når vegen er sperret, gir et trykk på kortet eller brikken omkjøring
+  ["navcard", "hzChip"].forEach(id => $(id).addEventListener("click", () => { if (alerted && !rerouted) reroute(); }));
+
+  // ---------- Visning ----------
+  const ICONS = {
+    straight: "M12 20V5M6 11l6-6 6 6",
+    right: "M6 21v-7a5 5 0 0 1 5-5h8M15 5l4 4-4 4",
+    left: "M18 21v-7a5 5 0 0 0-5-5H5M9 5 5 9l4 4",
+    uturn: "M7 21V10a5 5 0 0 1 10 0v7M13 14l4 4 4-4",
+    arrive: "M6 21V4M6 4h11l-2.5 4L17 12H6",
+    blocked: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM6.5 12h11"
+  };
+  const fmtDist = u => { const m = u * M_PER_UNIT; return m < 1000 ? Math.max(10, Math.round(m / 10) * 10) + " m" : (m / 1000).toFixed(1).replace(".", ",") + " km"; };
+  const clock = min => { const t = Math.round(BASE_MIN + min); return String(Math.floor(t / 60) % 24).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+  let lastIcon = "";
+  function setNav(icon, dist, html) {
+    if (icon !== lastIcon) { $("navIcon").innerHTML = '<path d="' + ICONS[icon] + '"/>'; lastIcon = icon; }
+    $("navDist").textContent = dist;
+    $("navTxt").innerHTML = html;
+  }
+
+  function render(W, H) {
+    const p = routeAt(route, pos);
+    const ahead = routeAt(route, Math.min(route.len, pos + 10));
+    if (Math.hypot(ahead.x - p.x, ahead.y - p.y) > 0.5) {
+      const target = Math.atan2(ahead.y - p.y, ahead.x - p.x) * 180 / Math.PI + 90;
+      let d = ((target - heading + 540) % 360) - 180;
+      heading += d * 0.25;
+    }
+    car.setAttribute("transform", `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${heading.toFixed(1)})`);
+    cam.x += (p.x - cam.x) * 0.12; cam.y += (p.y - cam.y) * 0.12;
+    world.setAttribute("transform", `translate(${(W / 2 - cam.x).toFixed(1)} ${(H * 0.64 - cam.y).toFixed(1)})`);
+
+    // Gjenstående rute
+    let d = "M" + p.x.toFixed(1) + " " + p.y.toFixed(1);
+    for (let i = p.i + 1; i < route.pts.length; i++) d += "L" + route.pts[i].x.toFixed(1) + " " + route.pts[i].y.toFixed(1);
+    routeEl.setAttribute("d", d); routeCaseEl.setAttribute("d", d);
+
+    const remaining = route.len - pos;
+    const onDetour = rerouted && pos > route.detourFrom && pos < route.detourTo;
+
+    // Navigasjonskort
+    if (arrived) setNav("arrive", "Framme", "Du er framme ved <b>Holmvik havn</b>");
+    else if (!rerouted && alerted && mainS() >= STOP_AT - 3) setNav("blocked", "Sperret", "Steinras foran. <b>Trykk for omkjøring</b>");
+    else if (!rerouted) setNav("straight", fmtDist(remaining), "Følg <b>Lyngdalsvegen</b> mot Holmvik");
+    else {
+      const m = route.maneuvers.find(x => x.at > pos + 0.5) || route.maneuvers[route.maneuvers.length - 1];
+      const dist = fmtDist(m.at - pos);
+      if (m.type === "uturn") setNav("uturn", "Snu", "Snu når det er trygt");
+      else if (m.type === "right") setNav("right", dist, "Sving til høyre inn på <b>" + m.road + "</b>");
+      else if (m.type === "left") setNav("left", dist, "Sving til venstre inn på <b>" + m.road + "</b>");
+      else setNav("arrive", dist, "Framme ved <b>Holmvik havn</b>");
+    }
+
+    // Fare-brikke
+    if (alerted && !arrived) {
+      const chip = $("hzChip");
+      if (!rerouted) {
+        chip.classList.remove("info");
+        const dist = LS - mainS();
+        $("hzChipTxt").innerHTML = "Steinras <b>" + fmtDist(Math.max(0, dist)) + " foran</b> · vegen er sperret";
+      } else if (pos < route.detourTo) {
+        chip.classList.add("info");
+        $("hzChipTxt").innerHTML = "Omkjøring rundt steinraset · <b>+" + extraMin + " min</b>";
+      } else chip.hidden = true;
+    } else if (arrived) $("hzChip").hidden = true;
+
+    // Bunnark
+    const slowLeft = rerouted ? Math.max(0, Math.min(route.detourTo, route.len) - Math.max(pos, route.detourFrom)) * (pos < route.detourTo ? 1 : 0) : 0;
+    const mins = minutesFor(remaining, Math.min(slowLeft, remaining));
+    const blocked = alerted && !rerouted && !arrived;
+    const big = $("etaBig");
+    big.classList.toggle("bad", blocked);
+    if (arrived) { big.textContent = "Framme"; $("etaSub").textContent = "Holmvik havn · " + clock(0); }
+    else if (blocked) { big.textContent = "Vegen er sperret"; $("etaSub").textContent = "Omkjøring: +" + EXTRA + " min via Kvernhusvegen"; }
+    else { big.textContent = Math.max(1, Math.round(mins)) + " min"; $("etaSub").textContent = fmtDist(remaining) + " · ankomst " + clock(mins); }
+    $("viaTxt").innerHTML = rerouted && pos < route.detourTo ? "Via <b>Kvernhusvegen og Rognlivegen</b>" : "Via <b>Fv 1842 Lyngdalsvegen</b>";
+
+    // Fart
+    const lim = onDetour ? 40 : 60;
+    $("limit").textContent = lim;
+    $("spdVal").textContent = Math.round(v / 26 * (lim + 2));
+    $("speed").style.bottom = ($("sheet").offsetHeight + 12) + "px";
+  }
+
+  function tick(dt) {
+    if (arrived) { v = 0; return; }
+    let vt = rerouted ? 22 : 26;
+    if (rerouted && pos > route.detourFrom && pos < route.detourTo) vt = 16;
+    if (alerted && !rerouted) { const rem = STOP_AT - mainS(); vt = rem <= 0 ? 0 : Math.min(12, rem * 0.5); }
+    if (uturnWait > 0) { uturnWait -= dt; vt = 0; }
+    // Rolig inn i svingene
+    if (rerouted) for (const m of route.maneuvers) { const dd = m.at - pos; if (dd > 0 && dd < 40 && m.type !== "arrive") vt = Math.min(vt, 9 + dd * 0.3); }
+    const remaining = route.len - pos;
+    vt = Math.min(vt, remaining * 0.7);
+    v += Math.max(-40 * dt, Math.min(14 * dt, vt - v));
+    if (v < 0) v = 0;
+    pos = Math.min(route.len, pos + v * dt);
+    if (remaining < 1.5) arrived = true;
+    if (!alerted && !rerouted && mainS() >= ALERT_AT) fireAlert();
+  }
+
+  reset();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const r = $("phone").getBoundingClientRect();
+    tick(dt);
+    render(r.width, r.height);
+    requestAnimationFrame(frame);
+  }
+  render($("phone").clientWidth, $("phone").clientHeight);
+  requestAnimationFrame(frame);
+})();
+</script>
