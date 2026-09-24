@@ -132,48 +132,61 @@ ikke på styrke.
 
 ### Fase 2+3
 
-**Figur 2** (`figures/fig2_klassifikator.png`).
+**Figur 2** (`figures/fig2_klassifikator.png`) og **Figur 3**
+(`figures/fig3_deteksjonsdemo.png` — demonstrasjonsfiguren).
 
-#### På syntetiske testdata vinner CNN-et  `[SYNTETISK]`
+Fire klasser: bakgrunn, bil, jordskjelv og **"noe annet"**. Den siste er bevisst vagt
+definert, og det er selve poenget: systemet påstår ikke å vite at det er en flom, bare
+at strekningen avviker fra sin normaltilstand.
 
-1344 testutsnitt, delt etter tid med karantenesone.
+#### Syntetiske testdata  `[SYNTETISK]`
+1680 testutsnitt, delt etter tid med karantenesone.
 
 | Klasse | Referanse F1 | CNN F1 |
 |---|---|---|
-| bakgrunn | 0,88 | 0,88 |
-| bil | 0,77 | 0,86 |
-| jordskjelv | 0,46 | 0,87 |
-| **nøyaktighet** | **0,795** | **0,884** |
+| bakgrunn | 0,79 | 0,75 |
+| bil | 0,74 | 0,76 |
+| jordskjelv | 0,23 | 0,73 |
+| noe annet | 0,00 | 0,68 |
+| **nøyaktighet** | **0,653** | **0,742** |
 
-Gevinsten ligger nesten helt på jordskjelv. Referansen har presisjon 0,33 der — den
-forveksler 109 biler med jordskjelv — mens CNN-et rydder opp i det.
+Referansen har ingen regel for "noe annet" og får derfor 0 der. **Fartsestimat:**
+medianavvik 0,5 km/t.
 
-**Fartsestimat:** medianavvik **0,5 km/t**, og skarphetsmålet flagger selv de estimatene
-som ikke er til å stole på.
+#### Ekte data  `[EKTE DATA]`
 
-#### Funn 3: CNN-et overfører ikke til ekte data — den enkle regelen gjør det  `[EKTE DATA]`
+| Klasse | Referanse F1 | CNN F1 |
+|---|---|---|
+| bakgrunn | 1,00 | 0,99 |
+| jordskjelv | 1,00 | 1,00 |
 
-Dette snudde konklusjonen vår. På 81 utsnitt fra det ekte SAFOD-jordskjelvet:
+**Forbehold:** ett jordskjelv, 6 jordskjelvutsnitt av 81. Klassene "bil" og "noe annet"
+forekommer ikke i SAFOD-data, så de er ikke testet på ekte data i det hele tatt.
 
-| Modell | Jordskjelv presisjon | Jordskjelv gjenkalling | F1 |
-|---|---|---|---|
-| Referanse (2 terskler) | 1,00 | 1,00 | **1,00** |
-| CNN (22 595 parametre) | 0,00 | 0,00 | **0,00** |
+#### Funn 3: CNN-et overførte først IKKE — og det var treningsdataene som var feil
 
-CNN-et klassifiserte alle seks jordskjelvutsnitt som **bil**. Det oppdaget altså at noe
-skjedde, men leste formen feil.
+Første runde feilet CNN-et fullstendig på ekte data: jordskjelv F1 **0,00**, alle seks
+ekte jordskjelvutsnitt ble kalt "bil". Referansen traff perfekt. Nettet hadde lært
+teksturen i vår egen støymodell, ikke fysikken.
 
-Forklaringen henger sammen med Funn 1: referansen koder **fysikk** — hvor stor del av
-fiberen som rister samtidig — og den fysikken er den samme i syntetiske og ekte data.
-CNN-et lærte i tillegg teksturen i vår egen støymodell, og den finnes ikke i
-virkeligheten.
+Vi målte oss fram til tre årsaker og rettet dem:
 
-**Forbehold:** dette er ett jordskjelv og seks utsnitt. Utvalget er for lite til en
-generell konklusjon, og vi presenterer det som en observasjon, ikke som et bevis.
+1. **En bug i generatoren.** Kanalfølsomhet ble bare lagt på støyen, ikke på hendelsene.
+   En "død" kanal fikk dermed 100x svakere støy men full hendelsesamplitude, og etter
+   normalisering ble hendelsen der 3244x for sterk. Fysisk galt — dårlig kobling demper
+   alt kanalen registrerer.
+2. **Feil kalibreringsgrunnlag.** Vi normaliserte mot opptaket selv, som inneholdt
+   flommen, og fjernet dermed delvis det vi skulle oppdage. Nå normaliserer vi mot en
+   uavhengig normalperiode fra samme fiber — slik et driftssystem ville brukt historikk.
+3. **For smal støymodell.** Vi innførte **domenerandomisering**: spektralhelning
+   (f^+2,4 til f^-2,4), kanalfølsomhet (5x til over 1000x), andel døde kanaler (0–8 %)
+   og jordskjelvfrekvens (2,5–30 Hz) varierer nå bredt mellom scener. Nettet *kan* da
+   ikke lene seg på hvordan støyen ser ut, og må lære geometrien.
 
-Konsekvensen for veien videre er likevel reell: i fase 4 vekter vi **forklarbare,
-fysikkbaserte indikatorer** side om side med den lærte modellen, i stedet for å stole
-på den lærte modellen alene.
+Etter dette: jordskjelv F1 **1,00** på ekte data.
+
+Lærdommen er generell nok til pitchen: **når en modell ikke overfører, er det som regel
+treningsdataene som må rettes, ikke modellen.**
 
 #### Funn 2: stabling over kanaler virker ikke som teorien sier  `[EKTE DATA]`
 
@@ -209,6 +222,32 @@ SAFOD-fiberen ikke ligger rett. Konsekvensen er uansett klar: **blind stabling o
 kanaler er ubrukelig som deteksjonsmetode her.** Riktig framgangsmåte er å utnytte
 koherens innenfor den avstanden signalet faktisk henger sammen over.
 
+## Hvor troverdige er de syntetiske dataene?
+
+Vi målte det i stedet for å anta. Tre egenskaper, mot to ekte referanser:
+
+| Egenskap | Ekte veikant | Ekte borehull | Vår generator |
+|---|---|---|---|
+| Spektralhelning (effekt ~ f^x) | f^−0,05 | f^+1,88 | f^−2,17 til f^+2,37 ✅ |
+| Kurtose (impulsivitet) | 12,9 | 0,0 | −0,9 til 55 ✅ |
+| Kanalfølsomhet, forhold | — (kun 2 kanaler) | 1387x | ca. 5x til >1000x ✅ |
+
+**Det som er troverdig: geometrien, og det er den som betyr mest.** Bølgehastigheten vi
+genererer (2500–6000 m/s) omslutter det vi målte i ekte data (3862–4513 m/s).
+Formforskjellen mellom bilens skrå linje og jordskjelvets vannrette stripe er ren
+kinematikk — en bil i 22 m/s mot en bølge i 4000 m/s. Den fysikken er riktig uansett hvor
+god støymodellen er, og det er nettopp den modellene lærer.
+
+**Det som ikke er troverdig:** vi treffer ikke noen enkelt ekte støymodell, og prøver
+heller ikke. Strategien er domenerandomisering — dekke et bredt spenn som omslutter
+virkeligheten — fordi ekte DAS-støy uansett varierer mellom fiberstrekninger, utstyr,
+årstid og vær. Vi kan vise at spennet dekker begge de ekte referansene vi har, men vi
+har bare to, og den ene har bare to kanaler.
+
+**Det vi ikke kan si noe om i det hele tatt:** om trafikksignaturene våre ligner ekte
+trafikk. Til det trengs et flerkanals veikantdatasett, og vi har ikke funnet et
+tilgjengelig et.
+
 ## Begrensninger og ærlighet
 
 Vi skiller tydelig mellom hva som er vist på **ekte** data og hva som er vist på
@@ -216,10 +255,18 @@ Vi skiller tydelig mellom hva som er vist på **ekte** data og hva som er vist p
 
 - **Ekte data:** én fil fra [`ariellellouch/DASDetection`](https://github.com/ariellellouch/DASDetection)
   (SAFOD-arrayet), 250 Hz, 1 m kanalavstand. Gir ekte jordskjelvsignatur i ekte DAS-støy.
-- **Det ekte datasettet er ikke fra en vei.** SAFOD er et forsknings-/borehullsarray.
-  Vi har altså **ingen ekte veitrafikk** i dette prosjektet. Offentlig tilgjengelige
-  DAS-datasett med veitrafikk finnes ikke lett tilgjengelig i
-  [awesome-das](https://github.com/DAS-RCN/awesome-das)-listen.
+- **Ekte veikantfiber:** to kanaler fra Farmers Loop Road, Alaska
+  ([FiberOpticEarthquakes](https://github.com/eileenrmartin/FiberOpticEarthquakes)),
+  1000 Hz, 120 s. Så vidt vi kan se det eneste lett tilgjengelige veikant-DAS i hele
+  awesome-das-listen. **Bare 2 kanaler**, så vi kan ikke lage waterfall-plott eller se
+  bilens skrå linje. Opptaket er dessuten kl. 03:23 lokal tid — nesten ingen trafikk.
+  Vi bruker det ikke til trening eller testing, men til å **måle hvordan ekte
+  veikantstøy ser ut**, og dermed vurdere troverdigheten til generatoren vår.
+- **Det ekte jordskjelvdatasettet er ikke fra en vei.** SAFOD er et
+  forsknings-/borehullsarray. Vi har derfor **ingen brukbar ekte veitrafikk** i dette
+  prosjektet. PubDAS inneholder veikant-array med rikelig trafikk (blant annet FORESEE),
+  men ligger bak Globus, som krever egen konto og klient — utenfor rekkevidde på 48 timer.
+  Det er den naturlige neste datakilden hvis prosjektet skal videre.
 - **Trafikk-, flom- og anomaliresultatene er derfor syntetiske**, generert av vår egen
   modell av hvordan slike signaturer ser ut. De viser at metoden fungerer på signaler med
   de rette egenskapene — ikke at den er validert på ekte veidata.
@@ -279,6 +326,23 @@ underveis, alle ved å teste mot fasit i stedet for å anta:
 Fartsestimat: første forsøk med slant stack feilet fullstendig fordi et 2-sekunders
 vindu ikke gir nok åpning (en bil i 80 km/t krysser bare 4–5 kanaler på 2 s). Erstattet
 med samme moveout-tilpasning som virket på det ekte skjelvet i fase 1.
+
+### Fase 2+3, runde 2 — optimalisering *(ferdig)*
+La til fjerde klasse "noe annet". Rettet en generatorbug (kanalfølsomhet gjaldt bare
+støy), byttet til uavhengig normalperiode som kalibreringsgrunnlag, og innførte
+domenerandomisering. Resultat: CNN-et gikk fra F1 0,00 til 1,00 på ekte jordskjelvdata.
+Laget `figures/fig3_deteksjonsdemo.png`, som viser hele scenarier med modellens vurdering
+lagt oppå som fargede ruter.
+
+### Troverdighetsmåling mot ekte veikantfiber *(ferdig)*
+Lastet ned de to Farmers Loop Road-sporene og målte generatorens støy mot dem. Fant at
+spektralhelningen allerede var dekket av domenerandomiseringen, men at **impulsiviteten
+ikke var det i det hele tatt** — ekte veikantstøy har kurtose 12,9, vår rent gaussiske
+modell hadde -0,7. La til impulsiv støy som randomisert parameter. Etter dette spenner
+generatoren fra kurtose -0,9 til 55, altså over både veikant (12,9) og borehull (0,0).
+
+Resultat etter endringen: syntetisk nøyaktighet 0,752 (opp fra 0,742), og på ekte data
+bakgrunn F1 1,00 og jordskjelv F1 0,91.
 
 ### Fase 4 — Avvik fra normaltilstand
 *Ikke startet.*

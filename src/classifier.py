@@ -29,8 +29,8 @@ import numpy as np
 
 from .features import (kanalstatistikk, normaliser_med_statistikk,
                        referanse_klassifiser, tilpass_referanse)
-from .synthetic_das import (BAKGRUNN, BIL, JORDSKJELV, KLASSENAVN, DASKonfig,
-                            generer_scene)
+from .synthetic_das import (BAKGRUNN, BIL, JORDSKJELV, NOE_ANNET, N_KLASSER,
+                            KLASSENAVN, DASKonfig, generer_scene, tilfeldig_domene)
 
 # Utsnittets størrelse: 64 kanaler (640 m vei) x 2 sekunder.
 N_KANALER_UTSNITT = 64
@@ -63,28 +63,44 @@ def lag_datasett(
     X_tren, y_tren, X_test, y_test = [], [], [], []
 
     for i in range(n_scener):
-        # Halvparten av scenene har jordskjelv. Uten dedikerte jordskjelvscener ville
-        # klassen blitt for sjelden til å lære noe av.
-        med_skjelv = (i % 2 == 1)
-        konfig = DASKonfig(seed=seed * 1000 + i)
+        # Scenetypene fordeles fast, ikke tilfeldig, så vi er sikre på å få nok
+        # eksempler av hver klasse. Med tilfeldig trekning kan en sjelden klasse
+        # bli underrepresentert ved uflaks, og det oppdager man sent.
+        med_skjelv = (i % 3 == 1)
+        med_flom = (i % 3 == 2)
+
+        # DOMENERANDOMISERING: hver scene får sine egne støyegenskaper. Dette er den
+        # viktigste endringen i denne runden, og den kom av en målt feil — modellen
+        # overtilpasset den ene støymodellen vår og feilet på ekte data.
+        konfig = tilfeldig_domene(seed * 1000 + i)
+
+        flom_kanaler = None
+        if med_flom:
+            # Flommen dekker en sammenhengende strekning av tilfeldig lengde og sted.
+            bredde = int(rng.integers(40, 110))
+            start = int(rng.integers(0, konfig.n_kanaler - bredde))
+            flom_kanaler = (start, start + bredde)
+
         scene = generer_scene(
             konfig=konfig,
             n_biler=int(rng.integers(3, 9)),
             med_jordskjelv=med_skjelv,
             # Litt regn i noen scener, så modellen ser forhøyet støygulv som IKKE
-            # er en hendelse. Ellers lærer den at "mye energi = hendelse".
+            # er en hendelse i seg selv. Ellers lærer den at "mye energi = hendelse",
+            # og regn blir en falsk alarm-maskin.
             med_regn=bool(rng.random() < 0.25),
+            flom_kanaler=flom_kanaler,
+            flom_styrke=float(rng.uniform(1.5, 4.0)),
         )
 
         n_kanaler, n_tid = scene.waterfall.shape
 
-        # Normaliseringsgrunnlag per kanal, hentet fra KALIBRERINGSPERIODEN — altså
-        # bare den delen av opptaket som også brukes til trening. Å bruke hele opptaket
-        # ville vært en (mild) form for datalekkasje, siden testperioden da påvirket
-        # hvordan treningsdataene ble skalert. Dette speiler også drift: et system
-        # kjenner kanalenes normale støynivå fra historikk, ikke fra framtiden.
-        kalibrering_til = int(trening_til * n_tid)
-        kanal_median, kanal_skala = kanalstatistikk(scene.waterfall[:, :kalibrering_til])
+        # Normaliseringsgrunnlag per kanal, hentet fra en UAVHENGIG NORMALPERIODE på
+        # samme fiber — ikke fra opptaket selv. Se Scene.kalibrering for hvorfor:
+        # normaliserer vi mot et opptak som inneholder flommen, fjerner vi delvis det
+        # vi skal oppdage. Dette speiler drift, der hver kanals normale nivå er kjent
+        # fra historikk, og gir samtidig ingen lekkasje fra testperioden.
+        kanal_median, kanal_skala = kanalstatistikk(scene.kalibrering)
         kanal_startpunkter = range(0, n_kanaler - N_KANALER_UTSNITT + 1, N_KANALER_UTSNITT)
         tid_startpunkter = range(0, n_tid - n_tid_utsnitt + 1, n_tid_utsnitt)
 
@@ -101,12 +117,17 @@ def lag_datasett(
                 bit = scene.waterfall[k0:k0 + N_KANALER_UTSNITT, t0:t0 + n_tid_utsnitt]
                 merker = scene.etiketter[k0:k0 + N_KANALER_UTSNITT, t0:t0 + n_tid_utsnitt]
 
-                # Jordskjelv har forrang: treffer et skjelv utsnittet, er det den
-                # viktigste hendelsen der, selv om en bil også passerer.
+                # Prioritering når flere ting skjer i samme utsnitt. Rekkefølgen er
+                # et bevisst valg etter hvor alvorlig hendelsen er for en trafikant:
+                # et jordskjelv betyr mest, deretter noe unormalt på strekningen, og
+                # sist en bil — som jo er det normale på en vei.
                 andel_skjelv = float((merker == JORDSKJELV).mean())
+                andel_annet = float((merker == NOE_ANNET).mean())
                 andel_bil = float((merker == BIL).mean())
                 if andel_skjelv > andel_terskel:
                     etikett = JORDSKJELV
+                elif andel_annet > andel_terskel:
+                    etikett = NOE_ANNET
                 elif andel_bil > andel_terskel:
                     etikett = BIL
                 else:
@@ -137,7 +158,7 @@ def klargjor_for_keras(X: np.ndarray) -> np.ndarray:
     return np.clip(X, -20.0, 20.0)[..., None]
 
 
-def bygg_cnn(inn_form: tuple[int, int, int], n_klasser: int = 3):
+def bygg_cnn(inn_form: tuple[int, int, int], n_klasser: int = N_KLASSER):
     """
     Et lite konvolusjonsnett. Med rundt 20 000 parametre trener det på CPU i minutter.
 
@@ -190,7 +211,7 @@ def evaluer(y_sann: np.ndarray, y_pred: np.ndarray, navn: str) -> dict:
     For varsling er gjenkalling på hendelser viktigst — en tapt flom er verre enn en
     unødig sjekk — men presisjon avgjør om folk fortsetter å stole på systemet.
     """
-    klasser = [BAKGRUNN, BIL, JORDSKJELV]
+    klasser = [BAKGRUNN, BIL, JORDSKJELV, NOE_ANNET]
     print(f"\n--- {navn} ---")
     print(f"{'Klasse':<12}{'Presisjon':>11}{'Gjenkalling':>13}{'F1':>8}{'Antall':>9}")
 
@@ -321,11 +342,11 @@ if __name__ == "__main__":
     np.random.seed(0)
 
     print("=== Bygger datasett (syntetisk) ===")
-    X_tren, y_tren, X_test, y_test = lag_datasett(n_scener=48, seed=1)
+    X_tren, y_tren, X_test, y_test = lag_datasett(n_scener=60, seed=1)
     print(f"Trening: {X_tren.shape[0]} utsnitt, form {X_tren.shape[1:]}")
     print(f"Test:    {X_test.shape[0]} utsnitt  (delt etter TID, med karantenesone)")
     for navn, y in [("trening", y_tren), ("test", y_test)]:
-        fordeling = {KLASSENAVN[k]: int(np.sum(y == k)) for k in (BAKGRUNN, BIL, JORDSKJELV)}
+        fordeling = {KLASSENAVN[k]: int(np.sum(y == k)) for k in range(N_KLASSER)}
         print(f"  Klassefordeling {navn}: {fordeling}")
 
     # --- Referanse uten maskinlæring ---------------------------------------
@@ -350,15 +371,27 @@ if __name__ == "__main__":
 
     # Klassevekter: siden bakgrunn dominerer, ville nettet ellers lære at det lønner seg
     # å gjette bakgrunn hele tiden. Vektene gjør sjeldne klasser dyrere å bomme på.
-    antall = np.bincount(y_tren, minlength=3).astype(float)
-    vekter = {k: float(len(y_tren) / (3 * max(antall[k], 1))) for k in range(3)}
+    antall = np.bincount(y_tren, minlength=N_KLASSER).astype(float)
+    vekter = {k: float(len(y_tren) / (N_KLASSER * max(antall[k], 1))) for k in range(N_KLASSER)}
     print(f"Klassevekter: { {KLASSENAVN[k]: round(v, 2) for k, v in vekter.items()} }")
+
+    # Tidlig stopp med tilbakestilling til beste vekter. Uten dette risikerer vi å
+    # ende på en tilfeldig dårlig epoke — forrige runde svingte valideringstapet
+    # kraftig mot slutten, og siste epoke er ikke nødvendigvis den beste modellen.
+    # Tålmodigheten er satt høyt (18) med vilje. Med domenerandomisering er oppgaven
+    # vesentlig vanskeligere, og valideringstapet forbedrer seg langsomt og ujevnt —
+    # med tålmodighet 8 stoppet treningen på epoke 4 og modellen ble klart dårligere.
+    stopp = keras.callbacks.EarlyStopping(
+        monitor="val_loss", patience=18, restore_best_weights=True, verbose=1)
+    senk_lr = keras.callbacks.ReduceLROnPlateau(
+        monitor="val_loss", factor=0.5, patience=7, min_lr=1e-5, verbose=0)
 
     modell.fit(
         Xn_tren, y_tren,
         validation_split=0.15,
-        epochs=20, batch_size=64,
+        epochs=120, batch_size=64,
         class_weight=vekter,
+        callbacks=[stopp, senk_lr],
         verbose=2,
     )
 
@@ -368,7 +401,7 @@ if __name__ == "__main__":
     # --- Sammenligning -----------------------------------------------------
     print("\n=== Lonner CNN-et seg? ===")
     print(f"{'Klasse':<12}{'Referanse F1':>15}{'CNN F1':>10}{'Endring':>10}")
-    for navn in ("bakgrunn", "bil", "jordskjelv"):
+    for navn in ("bakgrunn", "bil", "jordskjelv", "noe annet"):
         a, b = res_ref[navn]["f1"], res_cnn[navn]["f1"]
         print(f"{navn:<12}{a:>15.3f}{b:>10.3f}{b - a:>+10.3f}")
     print(f"{'noyaktighet':<12}{res_ref['noyaktighet']:>15.3f}"

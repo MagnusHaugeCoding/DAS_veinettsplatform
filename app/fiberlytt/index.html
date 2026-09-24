@@ -1,0 +1,745 @@
+<meta charset="utf-8">
+<title>Fiberlytt Operatørkonsoll</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF1F0; --panel:#FFFFFF; --panel-2:#F4F7F6; --ink:#142120; --muted:#586866; --line:#D2DBD9;
+  --accent:#1B6C84; --accent-ink:#FFFFFF;
+  --ok:#2F8A5B; --ok-bg:#E2F1E8; --ok-ink:#1D6641;
+  --warn:#D0900F; --warn-bg:#FBEFD6; --warn-ink:#7D5200;
+  --crit:#C23A2E; --crit-bg:#F8E0DC; --crit-ink:#9B271D;
+  --scope:#0B1413; --scope-line:rgba(226,240,238,.55);
+  --f-display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1312; --panel:#141C1B; --panel-2:#1A2423; --ink:#E1EAE8; --muted:#92A3A0; --line:#283432;
+    --accent:#5DB2CC; --accent-ink:#071214;
+    --ok:#4DBF89; --ok-bg:rgba(77,191,137,.14); --ok-ink:#7FD8AC;
+    --warn:#E6B043; --warn-bg:rgba(230,176,67,.15); --warn-ink:#F0C872;
+    --crit:#EF6759; --crit-bg:rgba(239,103,89,.16); --crit-ink:#F7948A;
+    --scope:#060B0A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1312; --panel:#141C1B; --panel-2:#1A2423; --ink:#E1EAE8; --muted:#92A3A0; --line:#283432;
+  --accent:#5DB2CC; --accent-ink:#071214;
+  --ok:#4DBF89; --ok-bg:rgba(77,191,137,.14); --ok-ink:#7FD8AC;
+  --warn:#E6B043; --warn-bg:rgba(230,176,67,.15); --warn-ink:#F0C872;
+  --crit:#EF6759; --crit-bg:rgba(239,103,89,.16); --crit-ink:#F7948A;
+  --scope:#060B0A;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-body)}
+.app{max-width:1440px;margin:0 auto;padding-inline:16px;padding-block:14px 32px;display:grid;gap:14px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Header */
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 20px}
+.brand{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.brand h1{margin:0;font:700 28px/1 var(--f-display);letter-spacing:.01em}
+.brand .road{color:var(--muted);font-size:13px}
+.fict{font:500 10.5px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted);border:1px dashed var(--muted);padding:4px 7px;border-radius:3px}
+.clockbox{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.live{display:inline-flex;align-items:center;gap:6px;font:500 12px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.live .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.live.paused .dot{background:var(--muted)}
+.clock{font:500 20px var(--f-mono);font-variant-numeric:tabular-nums}
+.date{font:400 12px var(--f-mono);color:var(--muted)}
+
+/* Buttons */
+.btn{font:500 13px/1.2 var(--f-body);color:var(--ink);background:var(--panel);border:1px solid var(--line);padding:7px 12px;border-radius:4px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--crit-ink);border-color:var(--crit)}
+.btn.danger:hover{background:var(--crit-bg)}
+.btn.sm{padding:4px 9px;font-size:12px}
+
+/* KPI strip */
+.kpis{display:flex;flex-wrap:wrap;gap:10px 36px;padding:12px 16px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.kpi{display:grid;gap:3px;align-content:start}
+.lbl{font:500 11px/1.2 var(--f-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kpi .val{font:600 21px/1.1 var(--f-display);font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.kpi .val.small{font:500 13px/1.4 var(--f-body)}
+.count{display:inline-flex;align-items:center;gap:6px}
+.count small{font:400 12px var(--f-body);color:var(--muted)}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.sw.l0{background:var(--ok)} .sw.l1{background:var(--warn)} .sw.l2{background:var(--crit)}
+.sw.l3{background:repeating-linear-gradient(135deg,var(--crit) 0 2px,transparent 2px 4px);outline:1px solid var(--crit);outline-offset:-1px}
+
+.banner{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 14px;background:var(--warn-bg);border:1px solid var(--warn);border-radius:6px;color:var(--ink)}
+.banner b{font:600 15px var(--f-display);text-transform:uppercase;letter-spacing:.05em;color:var(--warn-ink)}
+
+/* Grid */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:14px;align-items:start}
+@media (max-width:1020px){.grid{grid-template-columns:minmax(0,1fr)}}
+.side{display:grid;gap:14px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px 16px;display:grid;gap:12px;min-width:0}
+.panel-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px}
+.panel h2{margin:0;font:600 16px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.07em}
+.hint{font-size:12px;color:var(--muted)}
+
+/* Track: strip + waterfall */
+.track{display:grid;grid-template-columns:46px minmax(0,1fr);gap:4px 8px}
+.strip{position:relative;height:38px}
+.seg{position:absolute;top:0;bottom:0;margin:0;padding:6px 5px 0;border:0;border-top:5px solid var(--ok);border-right:2px solid var(--panel);background:var(--ok-bg);color:var(--ink);font:500 11px/1.2 var(--f-body);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.seg[data-level="1"]{background:var(--warn-bg);border-top-color:var(--warn)}
+.seg[data-level="2"]{background:var(--crit-bg);border-top-color:var(--crit)}
+.seg.closed{background-image:repeating-linear-gradient(135deg,transparent 0 6px,var(--crit-bg) 6px 9px);border-top-color:var(--crit)}
+.seg.sel{box-shadow:inset 0 0 0 2px var(--ink);font-weight:600}
+.seg:hover{filter:brightness(.97)}
+.yaxis{position:relative;font:11px var(--f-mono);color:var(--muted)}
+.yaxis span{position:absolute;right:0;transform:translateY(-50%);white-space:nowrap}
+.yaxis span:first-child{transform:none}
+.yaxis span:last-child{transform:translateY(-100%)}
+.wf-wrap{position:relative;background:var(--scope);border-radius:3px;overflow:hidden}
+#wf{display:block;width:100%;height:340px}
+.selband{position:absolute;top:0;bottom:0;border-left:1px dashed var(--scope-line);border-right:1px dashed var(--scope-line);background:rgba(255,255,255,.035);pointer-events:none}
+.xaxis{position:relative;height:18px;font:11px var(--f-mono);color:var(--muted)}
+.xaxis span{position:absolute;top:2px;transform:translateX(-50%)}
+.xaxis span:first-child{transform:none}
+.xaxis span:last-child{transform:translateX(-100%)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;align-items:center;font-size:12px;color:var(--muted);padding-left:54px}
+.ramp{display:inline-flex;align-items:center;gap:8px}
+.ramp i{display:inline-block;width:110px;height:8px;border-radius:2px;background:linear-gradient(90deg,#0B1413 0%,#133A44 30%,#2A7F95 55%,#8FD0D6 80%,#F2FBFA 100%);outline:1px solid var(--line)}
+@media (max-width:560px){.track{grid-template-columns:34px minmax(0,1fr)} .legend{padding-left:0} #wf{height:260px}}
+
+.sim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-top:12px;border-top:1px dashed var(--line)}
+.sim .lbl{margin-right:4px}
+.sim .gap{flex:1 1 12px}
+
+/* Detail */
+.det-title{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.det-title h3{margin:0;font:600 24px/1.1 var(--f-display);text-wrap:balance}
+.det-sub{font:12px var(--f-mono);color:var(--muted);margin-top:3px}
+.pill{flex:none;font:600 11px/1 var(--f-body);text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:999px;background:var(--ok-bg);color:var(--ok-ink)}
+.pill[data-level="1"]{background:var(--warn-bg);color:var(--warn-ink)}
+.pill[data-level="2"],.pill[data-level="3"]{background:var(--crit-bg);color:var(--crit-ink)}
+.reason{margin:0;font-size:13px}
+.spark-head{display:flex;justify-content:space-between;align-items:baseline}
+.score{font:500 22px var(--f-mono);font-variant-numeric:tabular-nums}
+#spark{display:block;width:100%;height:100px}
+#spark text{font:10px var(--f-mono);fill:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;border-top:1px solid var(--line);padding-top:10px}
+.stat{display:grid;gap:2px}
+.stat .v{font:500 16px var(--f-mono);font-variant-numeric:tabular-nums}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.note{margin:0;font-size:12px;color:var(--muted)}
+
+/* Alerts */
+.alerts{display:grid;gap:8px;max-height:430px;overflow:auto;padding-right:2px}
+.alert{display:grid;grid-template-columns:4px minmax(0,1fr);background:var(--panel-2);border-radius:4px;overflow:hidden}
+.alert .stripe{background:var(--accent)}
+.alert.l1 .stripe{background:var(--warn)} .alert.l2 .stripe{background:var(--crit)}
+.alert .body{padding:9px 11px;display:grid;gap:4px}
+.alert .r1{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.alert .t{font-weight:600}
+.alert time{font:12px var(--f-mono);color:var(--muted);white-space:nowrap}
+.alert .meta{font-size:12px;color:var(--muted)}
+.alert .sig{margin:0;font-size:12.5px}
+.alert .acts{margin-top:3px;align-items:center}
+.alert.acked .t{font-weight:500}
+.alert.acked{background:transparent;outline:1px solid var(--line);outline-offset:-1px}
+.ackd{font:12px var(--f-mono);color:var(--muted)}
+.empty{font-size:13px;color:var(--muted)}
+
+/* Route */
+.route-sel{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:end}
+.route-sel label{display:grid;gap:4px}
+.route-sel select{font:14px var(--f-body);padding:7px 8px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);width:100%}
+.swap{align-self:end}
+.route-res{padding:11px 13px;border-radius:4px;background:var(--ok-bg);display:grid;gap:3px}
+.route-res b{font:600 17px var(--f-display);text-transform:uppercase;letter-spacing:.05em;color:var(--ok-ink)}
+.route-res[data-level="1"]{background:var(--warn-bg)} .route-res[data-level="1"] b{color:var(--warn-ink)}
+.route-res[data-level="2"]{background:var(--crit-bg)} .route-res[data-level="2"] b{color:var(--crit-ink)}
+.route-res span{font-size:13px}
+
+footer{font-size:12px;color:var(--muted);max-width:80ch}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Fiberlytt</h1>
+      <span class="road">Fv 1842 Brekkeli – Holmvik havn · 38,0 km fiber i grøft langs vegen</span>
+      <span class="fict">Fiktivt system · syntetiske data</span>
+    </div>
+    <div class="clockbox">
+      <span class="live" id="live"><span class="dot"></span><span id="liveTxt">Direkte</span></span>
+      <span class="date">24.09.2026</span>
+      <span class="clock" id="clock">06:48:00</span>
+      <button class="btn" id="pause" type="button">Pause</button>
+    </div>
+  </header>
+
+  <section class="kpis" aria-label="Oversikt">
+    <div class="kpi">
+      <span class="lbl">Strekninger</span>
+      <span class="val">
+        <span class="count"><i class="sw l0"></i><span id="kN0">12</span><small>normal</small></span>
+        <span class="count"><i class="sw l1"></i><span id="kN1">0</span><small>avvik</small></span>
+        <span class="count"><i class="sw l2"></i><span id="kN2">0</span><small>kritisk</small></span>
+        <span class="count"><i class="sw l3"></i><span id="kN3">0</span><small>stengt</small></span>
+      </span>
+    </div>
+    <div class="kpi"><span class="lbl">Ukvitterte varsler</span><span class="val" id="kAlerts">0</span></div>
+    <div class="kpi"><span class="lbl">Kjøretøy på vegen nå</span><span class="val" id="kVeh">0</span></div>
+    <div class="kpi"><span class="lbl">Måleenhet</span><span class="val small">DAS-enhet Sørvika · 3 800 kanaler à 10 m<br><span class="muted">Normalprofil: 14 døgn historikk</span></span></div>
+  </section>
+
+  <div class="banner" id="banner" hidden>
+    <b>Jordskjelv registrert</b>
+    <span id="bannerTxt"></span>
+  </div>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="h-wf">
+      <div class="panel-head">
+        <h2 id="h-wf">Fiberen langs vegen</h2>
+        <span class="hint">Klikk en strekning for å se detaljer</span>
+      </div>
+      <div class="track">
+        <div></div>
+        <div class="strip" id="strip" role="group" aria-label="Strekninger"></div>
+        <div class="yaxis" aria-hidden="true">
+          <span style="top:0">nå</span>
+          <span style="top:25%">−2 min</span>
+          <span style="top:50%">−4 min</span>
+          <span style="top:75%">−6 min</span>
+          <span style="top:100%">−8 min</span>
+        </div>
+        <div class="wf-wrap">
+          <canvas id="wf" aria-label="Vannfallsplott: vibrasjon per posisjon langs fiberen over tid"></canvas>
+          <div class="selband" id="selband"></div>
+        </div>
+        <div></div>
+        <div class="xaxis" id="xaxis" aria-hidden="true"></div>
+      </div>
+      <div class="legend">
+        <span class="ramp">Vibrasjon <i></i> lav → høy</span>
+        <span>Vannrett: km langs fiberen · loddrett: tid, nyeste øverst</span>
+        <span>Skrå linje = kjøretøy · loddrett linje = stillestående kilde · vannrett stripe = jordskjelv</span>
+      </div>
+      <div class="sim">
+        <span class="lbl">Demo: simuler på <b id="simTarget">Tverrelva</b></span>
+        <button class="btn sm" type="button" id="sRock">Steinsprang</button>
+        <button class="btn sm" type="button" id="sFlood">Vann i vegbanen</button>
+        <button class="btn sm" type="button" id="sStop">Stanset kjøretøy</button>
+        <span class="gap"></span>
+        <button class="btn sm" type="button" id="sQuake">Jordskjelv (hele regionen)</button>
+      </div>
+    </section>
+
+    <div class="side">
+      <section class="panel" aria-labelledby="h-al">
+        <div class="panel-head"><h2 id="h-al">Varsler</h2><span class="hint" id="alHint"></span></div>
+        <div class="alerts" id="alerts"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="dName">
+        <div class="det-title">
+          <div>
+            <h3 id="dName">Tverrelva</h3>
+            <div class="det-sub" id="dSub"></div>
+          </div>
+          <span class="pill" id="dPill" data-level="0">Normal</span>
+        </div>
+        <p class="reason" id="dReason"></p>
+        <div>
+          <div class="spark-head"><span class="lbl">Avvik fra egen normaltilstand</span><span class="score" id="dScore">0,0</span></div>
+          <svg id="spark" viewBox="0 0 320 100" preserveAspectRatio="none" role="img" aria-label="Avviksindeks siste 5 minutter">
+            <line x1="0" x2="320" y1="94" y2="94" stroke="var(--line)" stroke-width="1"/>
+            <line id="thWarn" x1="0" x2="320" stroke="var(--warn)" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+            <line id="thCrit" x1="0" x2="320" stroke="var(--crit)" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+            <path id="spArea" fill="var(--accent)" fill-opacity=".14" stroke="none"/>
+            <path id="spLine" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+          </svg>
+          <div class="hint" style="display:flex;justify-content:space-between"><span>−5 min</span><span>stiplet: grense for avvik (2,5) og kritisk (5,0)</span><span>nå</span></div>
+        </div>
+        <div class="stats">
+          <div class="stat"><span class="lbl">Passeringer 10 min</span><span class="v" id="dFlow">0</span></div>
+          <div class="stat"><span class="lbl">Snittfart</span><span class="v" id="dSpeed">–</span></div>
+          <div class="stat"><span class="lbl">Stillestående</span><span class="v" id="dStopped">0</span></div>
+        </div>
+        <div class="acts">
+          <button class="btn danger" type="button" id="dClose">Steng strekning</button>
+          <button class="btn" type="button" id="dRelease">Frigi og nullstill</button>
+        </div>
+        <p class="note">Varsler holdes aktive til en operatør har kontrollert og frigitt strekningen.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-rt">
+        <div class="panel-head"><h2 id="h-rt">Rutesjekk</h2><span class="hint">Er vegen fra A til B trygg nå?</span></div>
+        <div class="route-sel">
+          <label for="rFrom"><span class="lbl">Fra</span><select id="rFrom"></select></label>
+          <button class="btn swap" type="button" id="rSwap" aria-label="Bytt retning">⇄</button>
+          <label for="rTo"><span class="lbl">Til</span><select id="rTo"></select></label>
+        </div>
+        <div class="route-res" id="rRes" data-level="0"><b id="rHead">Framkommelig</b><span id="rTxt"></span></div>
+      </section>
+    </div>
+  </div>
+
+  <footer>Fiberlytt er et fiktivt utsnitt av en plattform. Vegen, stedsnavnene, måleenheten og alle signaler er oppdiktet og genereres i nettleseren. Systemet slår ikke fast hva som har skjedd. Det varsler når en strekning avviker fra sin egen normaltilstand, og foreslår en sannsynlig årsak ut fra mønsteret.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // ---------- Oppsett ----------
+  const N = 380;           // viste kanaler (100 m hver, aggregert fra 10 m)
+  const H = 240;           // rader i vannfallet
+  const ROW_S = 2;         // sekunder per rad
+  const RATE = 12;         // rader per sekund i visningen
+  const T0 = new Date(2026, 8, 24, 6, 40, 0).getTime();
+
+  function mulberry(seed) {
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const R = mulberry(1842);
+
+  const SEG_DEF = [
+    ["Brekkeli", 0, 3.2], ["Hammarsvingen", 3.2, 6.0], ["Lia bru", 6.0, 8.1],
+    ["Tverrelva", 8.1, 11.4], ["Kvernhusmoen", 11.4, 15.0], ["Sørvika tunnel", 15.0, 18.6],
+    ["Sørvika", 18.6, 21.3], ["Skarvberget", 21.3, 24.9], ["Rognli", 24.9, 28.4],
+    ["Øyrane", 28.4, 31.6], ["Nordstrand", 31.6, 35.1], ["Holmvik", 35.1, 38.0]
+  ];
+  const PLACES = ["Brekkeli kryss", "Hammar", "Lia", "Tverrelv", "Kvernhus", "Tunnel vest",
+    "Tunnel øst", "Sørvika", "Skarv", "Rognli", "Øyrane", "Nordstrand", "Holmvik havn"];
+
+  const segs = SEG_DEF.map((d, i) => ({
+    id: i, name: d[0], a: d[1], b: d[2],
+    c0: Math.round(d[1] * 10), c1: Math.round(d[2] * 10),
+    ema: 0, score: 0, hist: [], latched: 0, persist: 0, inspectUntil: -1,
+    closed: false, passes: [], stopped: 0, cause: null
+  }));
+  const segOf = new Int16Array(N);
+  segs.forEach(s => { for (let c = s.c0; c < s.c1 && c < N; c++) segOf[c] = s.id; });
+
+  // Normalprofil per kanal: støygulv + faste kilder (pumpestasjon, kraftstasjon)
+  const base = new Float32Array(N), hum = new Float32Array(N), baseline = new Float32Array(N);
+  for (let c = 0; c < N; c++) {
+    base[c] = 0.085 + 0.025 * Math.sin(c * 0.071) + 0.02 * R();
+    if (c >= 150 && c < 186) base[c] *= 0.65; // tunnel: roligere
+  }
+  [[118, 0.22], [309, 0.17]].forEach(([h, a]) => {
+    for (let c = 0; c < N; c++) hum[c] += a * Math.exp(-((c - h) ** 2) / (2 * 1.44));
+  });
+  for (let c = 0; c < N; c++) baseline[c] = base[c] + hum[c];
+
+  const CAUSES = {
+    rock: { title: "Kraftig lokal hendelse, mulig ras", conf: 0.86,
+      sig: "Kort, kraftig impuls over ca. 0,8 km, etterfulgt av trafikkstans på begge sider." },
+    flood: { title: "Vedvarende avvik, mulig vann", conf: 0.64,
+      sig: "Jevn vibrasjon som øker over tid på et avgrenset parti. Mønsteret ligner vannføring i stikkrenne eller vegkant." },
+    stop: { title: "Stanset kjøretøy og kø", conf: 0.9,
+      sig: "Stillestående kilde i kjørebanen. Kjøretøy bak stopper i samme retning." },
+    unknown: { title: "Avvik fra normaltilstand", conf: 0.5,
+      sig: "Vibrasjonen ligger over strekningens normal for denne tiden på døgnet. Signaturen er ukjent." }
+  };
+  const LEVEL_TXT = ["Normal", "Avvik", "Kritisk", "Stengt"];
+
+  // ---------- Tilstand ----------
+  let row = 0, vehicles = [], events = [], alerts = [], alertSeq = 1;
+  let regionalUntil = -1, quakeRow = null, selected = 3, running = true, dirtyAlerts = true;
+  const scheduled = [];
+
+  // ---------- Hjelpere ----------
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, "0");
+  function tAt(r) { return new Date(T0 + r * ROW_S * 1000); }
+  function fmt(r) { const d = tAt(r); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); }
+  function fmtHM(r) { const d = tAt(r); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  const km = x => x.toFixed(1).replace(".", ",");
+  const dec = x => x.toFixed(1).replace(".", ",");
+  function eff(s) { return s.closed ? 3 : Math.max(s.latched, row <= s.inspectUntil ? 1 : 0); }
+
+  // ---------- Fargeskala ----------
+  const STOPS = [[0, [11, 20, 19]], [0.3, [19, 58, 68]], [0.55, [42, 127, 149]], [0.8, [143, 208, 214]], [1, [242, 251, 250]]];
+  const LUT = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255; let k = 0;
+    while (k < STOPS.length - 2 && t > STOPS[k + 1][0]) k++;
+    const [t0, c0] = STOPS[k], [t1, c1] = STOPS[k + 1];
+    const f = (t - t0) / (t1 - t0);
+    for (let j = 0; j < 3; j++) LUT[i * 3 + j] = c0[j] + (c1[j] - c0[j]) * f;
+  }
+
+  const cv = $("wf"); cv.width = N; cv.height = H;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#0B1413"; ctx.fillRect(0, 0, N, H);
+  const rowImg = ctx.createImageData(N, 1);
+
+  // ---------- Kjøretøy ----------
+  function spawn(dir) {
+    const truck = R() < 0.2;
+    const kmh = truck ? 60 + R() * 15 : 70 + R() * 20;
+    const pos = dir > 0 ? -1 : N;
+    if (vehicles.some(v => v.dir === dir && Math.abs(v.pos - pos) < 2.5)) return;
+    vehicles.push({ dir, pos, vmax: kmh / 180, v: kmh / 180, amp: truck ? 0.95 : 0.5, broken: false, stoppedFor: 0, seg: -1 });
+  }
+  function obstacle(v) {
+    let lim = Infinity;
+    for (const e of events) {
+      if (e.type !== "rock" || row - e.start < 3) continue;
+      const d = (e.ch - v.pos) * v.dir;
+      if (d > -1 && d - 2.5 < lim) lim = d - 2.5;
+    }
+    for (const u of vehicles) {
+      if (u === v || u.dir !== v.dir) continue;
+      const d = (u.pos - v.pos) * v.dir;
+      if (d > 0 && d - 1.3 < lim) lim = d - 1.3;
+    }
+    return lim;
+  }
+  function moveVehicles() {
+    if (R() < 0.045) spawn(1);
+    if (R() < 0.045) spawn(-1);
+    for (const v of vehicles) {
+      const target = v.broken ? 0 : v.vmax;
+      const want = Math.max(0, Math.min(target, obstacle(v) * 0.45));
+      v.v = want < v.v ? want : Math.min(want, v.v + 0.03);
+      v.pos += v.dir * v.v;
+      v.stoppedFor = v.v < 0.03 ? v.stoppedFor + 1 : 0;
+      const c = Math.round(v.pos);
+      const s = c >= 0 && c < N ? segOf[c] : -1;
+      if (s !== v.seg) { if (s >= 0) segs[s].passes.push(row); v.seg = s; }
+    }
+    vehicles = vehicles.filter(v => v.pos > -3 && v.pos < N + 2);
+  }
+
+  // ---------- Hendelser ----------
+  function evAmp(e, c) {
+    const age = row - e.start;
+    if (age < 0) return 0;
+    if (e.type === "rock") {
+      const d = c - e.ch; if (Math.abs(d) > 12) return 0;
+      let t = 0;
+      if (age < 5) t = 2.3 * (1 - age / 6); else if (age < 45) t = e.imp[age] || 0;
+      return Math.exp(-d * d / 18) * t * (0.7 + 0.6 * R());
+    }
+    if (e.type === "flood") {
+      const d = c - e.ch; if (Math.abs(d) > 30) return 0;
+      const amp = Math.min(0.55, e.a0 + e.rate * age);
+      return amp * Math.exp(-d * d / 162) * (0.55 + 0.9 * R());
+    }
+    if (e.type === "quake") {
+      const r = Math.hypot(c - e.ch, 150);
+      const dp = age - r / 120, ds = age - r / 70;
+      let v = 0;
+      if (dp >= 0) v += 0.75 * Math.exp(-dp / 4) * R();
+      if (ds >= 0) v += 1.7 * Math.exp(-ds / 8) * R();
+      return v;
+    }
+    return 0;
+  }
+  function midCh(s, f) { return Math.round(s.c0 + (s.c1 - s.c0) * f); }
+  function addRock(segId, ch) {
+    const s = segs[segId];
+    const imp = [];
+    for (let a = 5; a < 45; a++) imp[a] = R() < 0.22 ? (0.35 + 0.8 * R()) * Math.exp(-(a - 5) / 20) : 0;
+    events.push({ type: "rock", seg: segId, ch: ch ?? midCh(s, 0.35 + 0.3 * R()), start: row + 1, imp });
+  }
+  function addFlood(segId, a0 = 0.03, rate = 0.0012) {
+    events.push({ type: "flood", seg: segId, ch: midCh(segs[segId], 0.5), start: row + 1, a0, rate });
+  }
+  function addStop(segId) {
+    const s = segs[segId], ch = midCh(s, 0.55);
+    vehicles.push({ dir: R() < 0.5 ? 1 : -1, pos: ch, vmax: 0.35, v: 0, amp: 0.95, broken: true, stoppedFor: 20, seg: segId });
+    events.push({ type: "stop", seg: segId, ch, start: row + 1 });
+  }
+  function addQuake() {
+    events.push({ type: "quake", seg: -1, ch: 300, start: row + 1 });
+    // Etterskjelvet løsner stein ved Skarvberget litt senere
+    scheduled.push({ row: row + 62, fn: () => addRock(7, 236) });
+  }
+
+  // ---------- Varsler ----------
+  function pushAlert(a) {
+    a.id = alertSeq++;
+    if (a.row === undefined) a.row = row;
+    if (a.ack === undefined) a.ack = false;
+    alerts.unshift(a);
+    if (alerts.length > 40) alerts.pop();
+    dirtyAlerts = true;
+  }
+  function causeFor(s) {
+    const ev = events.filter(e => e.seg === s.id && e.type !== "quake").sort((x, y) => y.start - x.start)[0];
+    if (ev) return { key: ev.type, ch: ev.ch };
+    if (s.stopped > 0) return { key: "stop", ch: null };
+    return { key: "unknown", ch: null };
+  }
+  function segAlert(s, prev) {
+    const C = CAUSES[s.cause.key];
+    const where = s.cause.ch != null
+      ? "km " + km(Math.max(s.a, s.cause.ch / 10 - 0.4)) + "–" + km(Math.min(s.b, s.cause.ch / 10 + 0.4))
+      : "km " + km(s.a) + "–" + km(s.b);
+    pushAlert({ kind: "seg", seg: s.id, level: s.latched, title: (prev > 0 ? "Forverret: " : "") + C.title, sig: C.sig, conf: C.conf, where });
+  }
+
+  // ---------- Simuleringssteg ----------
+  const vals = new Float32Array(N), ex = new Float32Array(N);
+  function step() {
+    row++;
+    for (let i = scheduled.length - 1; i >= 0; i--) {
+      if (scheduled[i].row <= row) { const f = scheduled[i].fn; scheduled.splice(i, 1); f(); }
+    }
+    moveVehicles();
+    for (let c = 0; c < N; c++) {
+      let nv = base[c] * (0.6 + 0.8 * R()) + hum[c] * (0.85 + 0.3 * R());
+      for (const e of events) nv += evAmp(e, c);
+      ex[c] = nv - baseline[c];
+      vals[c] = nv;
+    }
+    for (const v of vehicles) {
+      const a = v.amp * (v.v < 0.03 ? 0.22 : 1);
+      const lo = Math.max(0, Math.floor(v.pos - 3)), hi = Math.min(N - 1, Math.ceil(v.pos + 3));
+      for (let c = lo; c <= hi; c++) vals[c] += a * Math.exp(-((c - v.pos) ** 2) / 2.4) * (0.75 + 0.5 * R());
+    }
+    drawRow();
+    events = events.filter(e => !(e.type === "quake" && row - e.start > 90));
+    updateSegments();
+  }
+  function drawRow() {
+    ctx.drawImage(cv, 0, 0, N, H - 1, 0, 1, N, H - 1);
+    const d = rowImg.data;
+    for (let c = 0; c < N; c++) {
+      const idx = Math.min(255, (Math.sqrt(Math.max(0, vals[c]) / 2.2) * 255) | 0) * 3;
+      d[c * 4] = LUT[idx]; d[c * 4 + 1] = LUT[idx + 1]; d[c * 4 + 2] = LUT[idx + 2]; d[c * 4 + 3] = 255;
+    }
+    ctx.putImageData(rowImg, 0, 0);
+  }
+  function updateSegments() {
+    let elevated = 0;
+    for (const s of segs) {
+      // Avvik = snittet av de 5 største kanaloverskuddene mot normalprofilen
+      const arr = Array.from(ex.subarray(s.c0, s.c1)).sort((x, y) => y - x);
+      let m = 0; for (let i = 0; i < 5; i++) m += arr[i]; m /= 5;
+      s.ema += 0.2 * (m - s.ema);
+      s.score = Math.max(0, s.ema / 0.045);
+      s.hist.push(s.score); if (s.hist.length > 150) s.hist.shift();
+      if (s.score >= 2.5) elevated++;
+      while (s.passes.length && s.passes[0] < row - 300) s.passes.shift();
+      s.stopped = vehicles.filter(v => v.seg === s.id && v.stoppedFor > 8).length;
+    }
+    // Mange strekninger samtidig = regional hendelse, ikke tolv lokale
+    if (elevated >= 8 && row > regionalUntil) {
+      regionalUntil = row + 45; quakeRow = row;
+      for (const s of segs) { s.inspectUntil = row + 180; s.persist = 0; }
+      pushAlert({ kind: "regional", seg: -1, level: 1, title: "Jordskjelv registrert", conf: 0.95, where: "Hele strekningen",
+        sig: "Nesten samtidig ankomst på alle kanaler (P- og S-bølge). Episenter anslått ca. 15 km fra km 30. Alle strekninger er under etterkontroll i 6 minutter." });
+    }
+    for (const s of segs) {
+      let sig = s.score >= 5 ? 2 : s.score >= 2.5 ? 1 : 0;
+      if (row <= regionalUntil) sig = 0;
+      let traf = s.stopped > 0 ? 1 : 0;
+      if (events.some(e => e.type === "rock" && e.seg === s.id && row - e.start >= 3)) traf = 2;
+      const cur = Math.max(sig, traf);
+      if (cur > s.latched) {
+        if (++s.persist >= 4) {
+          const prev = s.latched;
+          s.latched = cur; s.persist = 0; s.cause = causeFor(s);
+          segAlert(s, prev);
+        }
+      } else s.persist = 0;
+    }
+  }
+
+  // ---------- Grensesnitt ----------
+  const strip = $("strip");
+  const segBtns = segs.map(s => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "seg"; b.textContent = s.name; b.title = s.name + " (km " + km(s.a) + "–" + km(s.b) + ")";
+    b.style.left = (s.a / 38 * 100) + "%"; b.style.width = ((s.b - s.a) / 38 * 100) + "%";
+    b.addEventListener("click", () => select(s.id));
+    strip.appendChild(b);
+    return b;
+  });
+  $("xaxis").innerHTML = [0, 5, 10, 15, 20, 25, 30, 38].map(k => '<span style="left:' + (k / 38 * 100) + '%">' + k + (k === 38 ? " km" : "") + "</span>").join("");
+
+  const fromSel = $("rFrom"), toSel = $("rTo");
+  PLACES.forEach((p, i) => { fromSel.add(new Option(p, i)); toSel.add(new Option(p, i)); });
+  fromSel.value = "0"; toSel.value = String(PLACES.length - 1);
+  fromSel.addEventListener("change", renderRoute);
+  toSel.addEventListener("change", renderRoute);
+  $("rSwap").addEventListener("click", () => { const f = fromSel.value; fromSel.value = toSel.value; toSel.value = f; renderRoute(); });
+
+  function select(id) { selected = id; render(); }
+
+  $("sRock").addEventListener("click", () => { addRock(selected); if (!running) toggle(); });
+  $("sFlood").addEventListener("click", () => { addFlood(selected); if (!running) toggle(); });
+  $("sStop").addEventListener("click", () => { addStop(selected); if (!running) toggle(); });
+  $("sQuake").addEventListener("click", () => { addQuake(); if (!running) toggle(); });
+
+  $("dClose").addEventListener("click", () => {
+    const s = segs[selected];
+    s.closed = !s.closed;
+    pushAlert(s.closed
+      ? { kind: "ops", seg: s.id, level: 2, ack: true, title: "Strekning stengt", where: "km " + km(s.a) + "–" + km(s.b),
+          sig: "Operatør har stengt strekningen. Stengningen er sendt til vegtrafikksentralen (simulert)." }
+      : { kind: "ops", seg: s.id, level: 0, ack: true, title: "Stengning opphevet", where: "km " + km(s.a) + "–" + km(s.b),
+          sig: "Strekningen er åpnet igjen av operatør." });
+    render();
+  });
+  $("dRelease").addEventListener("click", () => {
+    const s = segs[selected];
+    events = events.filter(e => e.seg !== s.id);
+    vehicles.forEach(v => { if (v.broken && v.seg === s.id) v.broken = false; });
+    s.latched = 0; s.persist = 0; s.ema = 0; s.closed = false; s.inspectUntil = -1; s.cause = null;
+    alerts.forEach(a => { if (a.seg === s.id && !a.ack) { a.ack = true; a.ackRow = row; } });
+    pushAlert({ kind: "ops", seg: s.id, level: 0, ack: true, title: "Strekning frigitt", where: "km " + km(s.a) + "–" + km(s.b),
+      sig: "Operatør har kontrollert og frigitt strekningen. Overvåkingen fortsetter mot normaltilstanden." });
+    render();
+  });
+
+  $("alerts").addEventListener("click", e => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    if (b.dataset.act === "ack") {
+      const a = alerts.find(x => x.id === +b.dataset.id);
+      if (a) { a.ack = true; a.ackRow = row; dirtyAlerts = true; }
+    } else if (b.dataset.act === "show") select(+b.dataset.seg);
+    render();
+  });
+
+  function toggle() {
+    running = !running;
+    $("pause").textContent = running ? "Pause" : "Fortsett";
+    $("live").classList.toggle("paused", !running);
+    $("liveTxt").textContent = running ? "Direkte" : "Pauset";
+  }
+  $("pause").addEventListener("click", toggle);
+
+  function renderAlerts() {
+    const open = alerts.filter(a => !a.ack).length;
+    $("alHint").textContent = open ? open + " venter på kvittering" : "Alle kvittert";
+    if (!alerts.length) { $("alerts").innerHTML = '<p class="empty">Ingen varsler.</p>'; return; }
+    $("alerts").innerHTML = alerts.map(a => {
+      const segName = a.seg >= 0 ? segs[a.seg].name : "Regionalt";
+      const meta = [segName, a.where, a.conf ? "sikkerhet " + Math.round(a.conf * 100) + " %" : ""].filter(Boolean).join(" · ");
+      let acts;
+      if (!a.ack) acts = '<button class="btn sm primary" type="button" data-act="ack" data-id="' + a.id + '">Kvitter</button>';
+      else acts = '<span class="ackd">' + (a.ackRow != null ? "Kvittert " + fmtHM(a.ackRow) : "Logg") + (a.note ? " · " + a.note : "") + "</span>";
+      if (a.seg >= 0) acts += '<button class="btn sm" type="button" data-act="show" data-seg="' + a.seg + '">Vis strekning</button>';
+      return '<article class="alert l' + a.level + (a.ack ? " acked" : "") + '"><div class="stripe"></div><div class="body">' +
+        '<div class="r1"><span class="t">' + a.title + '</span><time>' + fmt(a.row) + '</time></div>' +
+        '<div class="meta">' + meta + '</div><p class="sig">' + a.sig + '</p><div class="acts">' + acts + "</div></div></article>";
+    }).join("");
+  }
+
+  function renderRoute() {
+    const i = +fromSel.value, j = +toSel.value;
+    const res = $("rRes");
+    if (i === j) { res.dataset.level = "0"; $("rHead").textContent = "Velg to ulike steder"; $("rTxt").textContent = ""; return; }
+    const lo = Math.min(i, j), hi = Math.max(i, j);
+    const list = segs.slice(lo, hi);
+    let worst = 0; const hits = [];
+    list.forEach(s => { const e = eff(s); if (e > 0) hits.push(s.name + " (" + LEVEL_TXT[e].toLowerCase() + ")"); worst = Math.max(worst, e); });
+    const dist = km(segs[hi - 1].b - segs[lo].a) + " km, " + list.length + " strekning" + (list.length > 1 ? "er" : "");
+    res.dataset.level = String(Math.min(worst, 2));
+    if (worst === 0) { $("rHead").textContent = "Framkommelig"; $("rTxt").textContent = dist + ". Ingen avvik fra normaltilstanden."; }
+    else if (worst === 1) { $("rHead").textContent = "Kjør med forsiktighet"; $("rTxt").textContent = dist + ". Avvik på " + hits.join(", ") + "."; }
+    else { $("rHead").textContent = "Ikke framkommelig"; $("rTxt").textContent = dist + ". Berørt: " + hits.join(", ") + "."; }
+  }
+
+  function renderDetail() {
+    const s = segs[selected], e = eff(s);
+    $("dName").textContent = s.name;
+    $("dSub").textContent = "km " + km(s.a) + "–" + km(s.b) + " · kanal " + (s.c0 * 10) + "–" + (s.c1 * 10 - 1);
+    const pill = $("dPill"); pill.dataset.level = String(e); pill.textContent = LEVEL_TXT[e];
+    let reason;
+    if (s.closed) reason = "Stengt av operatør." + (s.latched ? " Utløst av: " + CAUSES[s.cause.key].title.toLowerCase() + "." : "");
+    else if (s.latched) reason = CAUSES[s.cause.key].title + ". " + CAUSES[s.cause.key].sig;
+    else if (row <= s.inspectUntil) reason = "Etterkontroll etter jordskjelv til " + fmtHM(s.inspectUntil) + ". Ingen lokale avvik funnet så langt.";
+    else reason = "Innenfor strekningens normaltilstand for denne tiden på døgnet.";
+    $("dReason").textContent = reason;
+    $("dScore").textContent = dec(s.score);
+    // Sparkline
+    const W = 320, top = 6, bot = 94, max = 10;
+    const y = v => bot - Math.min(v, max) / max * (bot - top);
+    const n = s.hist.length, off = 150 - n;
+    let d = "";
+    s.hist.forEach((v, i) => { d += (i ? "L" : "M") + ((off + i) / 149 * W).toFixed(1) + " " + y(v).toFixed(1); });
+    $("spLine").setAttribute("d", d);
+    $("spArea").setAttribute("d", n ? d + "L" + W + " " + bot + "L" + (off / 149 * W).toFixed(1) + " " + bot + "Z" : "");
+    $("thWarn").setAttribute("y1", y(2.5)); $("thWarn").setAttribute("y2", y(2.5));
+    $("thCrit").setAttribute("y1", y(5)); $("thCrit").setAttribute("y2", y(5));
+    // Trafikk
+    $("dFlow").textContent = s.passes.length;
+    const moving = vehicles.filter(v => v.seg === s.id && v.v >= 0.03);
+    $("dSpeed").textContent = moving.length ? Math.round(moving.reduce((t, v) => t + v.v * 180, 0) / moving.length) + " km/t" : "–";
+    $("dStopped").textContent = s.stopped;
+    $("dClose").textContent = s.closed ? "Opphev stengning" : "Steng strekning";
+    $("dRelease").disabled = !(s.latched || s.closed || row <= s.inspectUntil);
+  }
+
+  function render() {
+    $("clock").textContent = fmt(row);
+    const counts = [0, 0, 0, 0];
+    segs.forEach((s, i) => {
+      const e = eff(s); counts[e]++;
+      const b = segBtns[i];
+      b.dataset.level = String(Math.min(e, 2));
+      b.classList.toggle("closed", s.closed);
+      b.classList.toggle("sel", i === selected);
+      b.setAttribute("aria-pressed", i === selected ? "true" : "false");
+    });
+    counts.forEach((c, i) => $("kN" + i).textContent = c);
+    $("kAlerts").textContent = alerts.filter(a => !a.ack).length;
+    $("kVeh").textContent = vehicles.filter(v => v.pos >= 0 && v.pos < N).length;
+    const s = segs[selected];
+    const band = $("selband"); band.style.left = (s.a / 38 * 100) + "%"; band.style.width = ((s.b - s.a) / 38 * 100) + "%";
+    $("simTarget").textContent = s.name;
+    const inQuake = quakeRow != null && row <= quakeRow + 180;
+    $("banner").hidden = !inQuake;
+    if (inQuake) $("bannerTxt").textContent = "kl. " + fmt(quakeRow) + ". Alle strekninger er under etterkontroll til " + fmtHM(quakeRow + 180) + ". Lokale avvik varsles fortsatt.";
+    if (dirtyAlerts) { renderAlerts(); dirtyAlerts = false; }
+    renderDetail();
+    renderRoute();
+  }
+
+  // ---------- Startscene ----------
+  // Historikk fra tidligere i morges
+  pushAlert({ kind: "ops", seg: -1, level: 0, row: -1150, ack: true, title: "Normaltilstand oppdatert", where: "Hele strekningen",
+    sig: "Nattlig rekalibrering er fullført for alle 12 strekninger." });
+  pushAlert({ kind: "seg", seg: 2, level: 1, row: -640, ack: true, ackRow: -601, title: CAUSES.stop.title, sig: CAUSES.stop.sig,
+    conf: 0.9, where: "km 7,0–7,6", note: "bergingsbil på stedet" });
+  // Vann som har begynt å renne over vegen ved Tverrelva
+  events.push({ type: "flood", seg: 3, ch: 98, start: 0, a0: 0.07, rate: 0.00012 });
+  for (let i = 0; i < 20; i++) {
+    const dir = R() < 0.5 ? 1 : -1, truck = R() < 0.2, kmh = truck ? 60 + R() * 15 : 70 + R() * 20;
+    vehicles.push({ dir, pos: R() * N, vmax: kmh / 180, v: kmh / 180, amp: truck ? 0.95 : 0.5, broken: false, stoppedFor: 0, seg: -1 });
+  }
+  for (let i = 0; i < H; i++) step();
+
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) toggle();
+  render();
+
+  let acc = 0, last = performance.now();
+  function frame(now) {
+    const dt = Math.min(250, now - last); last = now;
+    if (running) {
+      acc += dt;
+      const per = 1000 / RATE; let n = 0;
+      while (acc >= per && n < 4) { step(); acc -= per; n++; }
+      if (n) render();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
