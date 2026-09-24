@@ -351,9 +351,14 @@ def generer_scene(
 
     # --- Jordskjelv --------------------------------------------------------
     if med_jordskjelv:
+        # Ankomsttiden spres over HELE opptaket, ikke bare den første halvdelen.
+        # Dette er ikke kosmetikk: når vi senere deler trenings- og testdata etter tid,
+        # ville et skjelv som alltid kommer tidlig havnet utelukkende i treningsdelen,
+        # og testsettet ville ikke inneholdt et eneste jordskjelv å måle på.
+        # Jordskjelv inntreffer uansett ikke fortrinnsvis tidlig i et opptak.
         hendelser.append(legg_til_jordskjelv(
             waterfall, etiketter, konfig, rng,
-            ankomst_s=float(rng.uniform(0.2, 0.5) * konfig.varighet_s),
+            ankomst_s=float(rng.uniform(0.08, 0.85) * konfig.varighet_s),
         ))
 
     # --- Avvik -------------------------------------------------------------

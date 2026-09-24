@@ -92,6 +92,13 @@ kanalintervall (flom) eller hele fiberen (regn).
 ### Ekte data (`src/real_data.py`)
 Laster ned én SAFOD-fil, fjerner instrumentglitcher, og båndpassfiltrerer 2–40 Hz.
 
+### Klassifikator (`src/features.py`, `src/classifier.py`)
+Utsnitt på 64 kanaler × 2 s. To modeller sammenlignes: en referanse uten maskinlæring
+(energiterskel + koherens, altså to tall) og et CNN med 22 595 parametre. Begge får
+tilpasse parametrene sine på de samme treningsdataene, slik at sammenligningen er
+rettferdig. Trening/test deles **etter tid med karantenesone**, og hver kanal
+normaliseres mot sin egen langtidsbakgrunn.
+
 ## Resultater
 
 ### Fase 1
@@ -123,6 +130,51 @@ Dette er direkte relevant for systemdesignet: en ren amplitudeterskel ville slå
 artefaktet og oversett skjelvet. Derfor bygger vi på **koherens i (kanal, tid)-planet**,
 ikke på styrke.
 
+### Fase 2+3
+
+**Figur 2** (`figures/fig2_klassifikator.png`).
+
+#### På syntetiske testdata vinner CNN-et  `[SYNTETISK]`
+
+1344 testutsnitt, delt etter tid med karantenesone.
+
+| Klasse | Referanse F1 | CNN F1 |
+|---|---|---|
+| bakgrunn | 0,88 | 0,88 |
+| bil | 0,77 | 0,86 |
+| jordskjelv | 0,46 | 0,87 |
+| **nøyaktighet** | **0,795** | **0,884** |
+
+Gevinsten ligger nesten helt på jordskjelv. Referansen har presisjon 0,33 der — den
+forveksler 109 biler med jordskjelv — mens CNN-et rydder opp i det.
+
+**Fartsestimat:** medianavvik **0,5 km/t**, og skarphetsmålet flagger selv de estimatene
+som ikke er til å stole på.
+
+#### Funn 3: CNN-et overfører ikke til ekte data — den enkle regelen gjør det  `[EKTE DATA]`
+
+Dette snudde konklusjonen vår. På 81 utsnitt fra det ekte SAFOD-jordskjelvet:
+
+| Modell | Jordskjelv presisjon | Jordskjelv gjenkalling | F1 |
+|---|---|---|---|
+| Referanse (2 terskler) | 1,00 | 1,00 | **1,00** |
+| CNN (22 595 parametre) | 0,00 | 0,00 | **0,00** |
+
+CNN-et klassifiserte alle seks jordskjelvutsnitt som **bil**. Det oppdaget altså at noe
+skjedde, men leste formen feil.
+
+Forklaringen henger sammen med Funn 1: referansen koder **fysikk** — hvor stor del av
+fiberen som rister samtidig — og den fysikken er den samme i syntetiske og ekte data.
+CNN-et lærte i tillegg teksturen i vår egen støymodell, og den finnes ikke i
+virkeligheten.
+
+**Forbehold:** dette er ett jordskjelv og seks utsnitt. Utvalget er for lite til en
+generell konklusjon, og vi presenterer det som en observasjon, ikke som et bevis.
+
+Konsekvensen for veien videre er likevel reell: i fase 4 vekter vi **forklarbare,
+fysikkbaserte indikatorer** side om side med den lærte modellen, i stedet for å stole
+på den lærte modellen alene.
+
 #### Funn 2: stabling over kanaler virker ikke som teorien sier  `[EKTE DATA]`
 
 Lærebøkene sier at stabling av N kanaler gir √N ganger bedre signal/støy — 28x for våre
@@ -133,10 +185,29 @@ Lærebøkene sier at stabling av N kanaler gir √N ganger bedre signal/støy �
 | M2.46, 11,7 km | 316 100 | 18 164 | **0,1x** (dårligere) |
 | M2.86, 87 km | 3,5 | 4,0 | 1,2x |
 
-To grunner til at teorien svikter: DAS-støy er **romlig korrelert** (laserstøy,
-storskala bakkebevegelse), så den kansellerer ikke. Og DAS måler tøyning *langs* fiberen,
-så fortegnet snur der fiberen endrer retning — å midle kanaler med motsatt fortegn
-utsletter signalet. Vi bruker derfor ikke stabling som deteksjonsmetode.
+**Korrigert forklaring.** Vi antok først at årsaken var romlig korrelert støy. Det er
+**feil**, og vi målte det: korrelasjonen mellom nabokanaler i støy er r = 0,02 ved 1 m og
+praktisk talt null lenger unna. Støyen er altså uavhengig, og den oppfører seg faktisk
+som teorien — amplituden faller med faktor 0,070 ved stabling av 800 kanaler, nær det
+teoretiske 0,035.
+
+Det er **signalet** som ikke overlever. Målt i jordskjelvvinduet:
+
+| Kanalavstand | Signalkorrelasjon | Støykorrelasjon |
+|---|---|---|
+| 1 m | +0,91 | +0,02 |
+| 5 m | +0,85 | +0,01 |
+| 25 m | **−0,20** | −0,01 |
+| 50 m | **−0,37** | +0,01 |
+
+Signalet er sterkt koherent over noen få meter, men **snur fortegn** på 25–50 m. Fortegnet
+på signaltoppen er 50,1 % positivt og 49,9 % negativt over arrayet. Signalet faller derfor
+med nøyaktig samme faktor som støyen (0,070x), og netto SNR-endring blir 0,99x.
+
+Årsaken er sannsynligvis at DAS måler tøyning *langs* fiberen, kombinert med at
+SAFOD-fiberen ikke ligger rett. Konsekvensen er uansett klar: **blind stabling over
+kanaler er ubrukelig som deteksjonsmetode her.** Riktig framgangsmåte er å utnytte
+koherens innenfor den avstanden signalet faktisk henger sammen over.
 
 ## Begrensninger og ærlighet
 
@@ -189,5 +260,25 @@ waterfall-plottene hadde feil orientering (tid måtte gå nedover, ellers blir j
 loddrett i stedet for vannrett), og alle biler startet samtidig med opptaket, noe som ga
 kunstig tom vei i den ene enden. Ekte trafikk er allerede på veien når målingen starter.
 
-### Fase 2+3 — Klassifikator
+### Fase 2+3 — Klassifikator *(ferdig)*
+Bygget referanseklassifikator, CNN og fartsestimat. Tre feil ble funnet og rettet
+underveis, alle ved å teste mot fasit i stedet for å anta:
+
+1. **Testsettet inneholdt null jordskjelv.** Generatoren plasserte alltid skjelvet i
+   første halvdel av opptaket, og tidsdelingen la dermed alle i treningsdelen.
+   Ankomsttiden spres nå over hele vinduet.
+2. **Per-kanal normalisering over 2 s skalerte bort bilene** (gjenkalling 0,11). En bil
+   fyller nesten hele tidsvinduet i de kanalene den berører, så den blåser opp MAD-en og
+   blir delt på seg selv. Rettet ved å hente normaliseringen fra kanalens
+   langtidsbakgrunn — som også er slik et driftssystem ville fungert. Bil-F1 gikk fra
+   0,00 til 0,83.
+3. **Referansen var en stråmann.** Den brukte medianen over kanaler som styrkemål og
+   fant derfor ingen biler i det hele tatt. Med 90-persentilen og tilpassede terskler
+   gikk den fra 0,52 til 0,80 nøyaktighet — og gjorde sammenligningen ærlig.
+
+Fartsestimat: første forsøk med slant stack feilet fullstendig fordi et 2-sekunders
+vindu ikke gir nok åpning (en bil i 80 km/t krysser bare 4–5 kanaler på 2 s). Erstattet
+med samme moveout-tilpasning som virket på det ekte skjelvet i fase 1.
+
+### Fase 4 — Avvik fra normaltilstand
 *Ikke startet.*

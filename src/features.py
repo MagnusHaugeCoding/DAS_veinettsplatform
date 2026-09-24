@@ -22,6 +22,26 @@ import numpy as np
 from .synthetic_das import BAKGRUNN, BIL, JORDSKJELV
 
 
+def kanalstatistikk(data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Regner ut median og robust spredning per kanal, til bruk som normaliseringsgrunnlag.
+
+    Skal kalles på en LANG periode (typisk et helt opptak), ikke på et kort utsnitt.
+    Se forklaringen i normaliser_per_kanal() for hvorfor det skillet er avgjørende.
+    """
+    median = np.median(data, axis=1, keepdims=True)
+    mad = np.median(np.abs(data - median), axis=1, keepdims=True)
+    skala = np.maximum(1.4826 * mad, 1e-12)
+    return median, skala
+
+
+def normaliser_med_statistikk(
+    utsnitt: np.ndarray, median: np.ndarray, skala: np.ndarray
+) -> np.ndarray:
+    """Normaliserer et utsnitt med statistikk regnet ut på forhånd fra en lengre periode."""
+    return ((utsnitt - median) / skala).astype(np.float32)
+
+
 def normaliser_per_kanal(utsnitt: np.ndarray) -> np.ndarray:
     """
     Normaliserer hver kanal for seg: trekk fra medianen, del på robust spredning.
@@ -36,9 +56,19 @@ def normaliser_per_kanal(utsnitt: np.ndarray) -> np.ndarray:
     Hvorfor median og MAD, ikke gjennomsnitt og standardavvik: vi normaliserer utsnitt
     som KAN inneholde en hendelse. Gjennomsnitt og standardavvik trekkes kraftig av
     selve hendelsen, slik at et utsnitt med en sterk bil ville blitt skalert ned til å
-    ligne bakgrunn — altså at vi skalerer bort nettopp det vi leter etter. Median og
-    MAD (median absolute deviation) påvirkes nesten ikke av en hendelse som opptar en
-    mindre del av utsnittet.
+    ligne bakgrunn. Median og MAD (median absolute deviation) påvirkes langt mindre.
+
+    ADVARSEL — denne funksjonen skal IKKE brukes på korte utsnitt med en bil i.
+    Vi målte konsekvensen: med 2-sekunders utsnitt falt gjenkallingen for bil til 0,11.
+    Grunnen er at en bil er til stede nesten HELE vinduet i de kanalene den berører.
+    Da er den ikke lenger en uteligger som medianen tåler — den ER fordelingen, blåser
+    opp MAD-en, og blir delt på seg selv. Selv et robust mål hjelper ikke når hendelsen
+    fyller vinduet.
+
+    Riktig framgangsmåte for korte utsnitt er å hente median og spredning fra kanalens
+    LANGTIDSBAKGRUNN med kanalstatistikk() og bruke normaliser_med_statistikk(). Det er
+    også slik et driftssystem ville fungert: hver kanals normale støynivå er kjent fra
+    en kalibreringsperiode, ikke regnet ut på nytt for hvert to-sekunders vindu.
     """
     median = np.median(utsnitt, axis=1, keepdims=True)
     mad = np.median(np.abs(utsnitt - median), axis=1, keepdims=True)
@@ -75,12 +105,14 @@ def koherens(utsnitt_normalisert: np.ndarray, terskel: float = 3.0) -> float:
 
 
 def referanse_klassifiser(
-    utsnitt: np.ndarray,
+    utsnitt_normalisert: np.ndarray,
     energiterskel: float = 6.0,
     koherensterskel: float = 0.55,
 ) -> int:
     """
     Referanseklassifikator uten maskinlæring. To enkle regler i rekkefølge:
+
+    Forventer et utsnitt som ALLEREDE er normalisert per kanal mot langtidsbakgrunnen.
 
       1. Er det nok energi til at noe i det hele tatt skjer? Hvis ikke: BAKGRUNN.
       2. Rister mesteparten av fiberen samtidig? Hvis ja: JORDSKJELV. Hvis nei: BIL.
@@ -89,14 +121,78 @@ def referanse_klassifiser(
     tar feil, kan vi se nøyaktig hvorfor. Det er denne egenskapen CNN-et må være
     vesentlig bedre for å fortjene plassen sin.
     """
-    norm = normaliser_per_kanal(utsnitt)
+    norm = utsnitt_normalisert
 
-    # Robust energimål: median over kanaler av maksimal absoluttverdi.
-    styrke = float(np.median(np.max(np.abs(norm), axis=1)))
+    # Styrkemål: 90-persentilen over kanaler av maksimal absoluttverdi.
+    #
+    # Valget av persentil er ikke likegyldig, og vi lærte det på den harde måten. Først
+    # brukte vi MEDIANEN over kanaler. Det ga gjenkalling 0,00 for bil — referansen fant
+    # ikke en eneste bil. Grunnen er at en bil bare berører 5-10 av 64 kanaler, så
+    # medianen over kanaler ser utelukkende bakgrunn og faller under terskelen.
+    # Medianen er riktig for noe som rammer hele fiberen, men blind for alt lokalt.
+    #
+    # 90-persentilen fanger opp lokale hendelser og er fortsatt robust mot enkeltkanaler
+    # som spretter. Dette er verdt å være nøye med: en referanse som er kunstig svak
+    # får et nevralt nett til å se bedre ut enn det er.
+    styrke = float(np.percentile(np.max(np.abs(norm), axis=1), 90))
     if styrke < energiterskel:
         return BAKGRUNN
 
     return JORDSKJELV if koherens(norm) > koherensterskel else BIL
+
+
+def tilpass_referanse(
+    X_normalisert: np.ndarray,
+    y: np.ndarray,
+    energi_kandidater: np.ndarray | None = None,
+    koherens_kandidater: np.ndarray | None = None,
+) -> tuple[float, float]:
+    """
+    Finner de to tersklene til referanseklassifikatoren ved søk på TRENINGSDATA.
+
+    Dette er et spørsmål om rettferdighet i sammenligningen. CNN-et får tilpasse 22 595
+    parametre til treningsdataene. Gir vi referansen faste terskler vi har gjettet, måler
+    vi ikke "nevralt nett mot enkel regel" — vi måler "tilpasset modell mot utilpasset
+    modell", og konklusjonen blir verdiløs. Referansen får derfor tilpasse sine to
+    parametre på nøyaktig samme data.
+
+    Vi optimerer makro-F1 (gjennomsnittet av F1 over de tre klassene) framfor nøyaktighet,
+    fordi nøyaktighet ville premiert å svare "bakgrunn" på alt.
+    """
+    if energi_kandidater is None:
+        energi_kandidater = np.linspace(2.0, 14.0, 25)
+    if koherens_kandidater is None:
+        koherens_kandidater = np.linspace(0.1, 0.9, 17)
+
+    # Regn ut styrke og koherens én gang per utsnitt, så slipper vi å gjøre det på nytt
+    # for hver kombinasjon av terskler.
+    styrker = np.array([np.percentile(np.max(np.abs(x), axis=1), 90) for x in X_normalisert])
+    koherenser = np.array([koherens(x) for x in X_normalisert])
+
+    def makro_f1(pred: np.ndarray) -> float:
+        f1er = []
+        for k in (BAKGRUNN, BIL, JORDSKJELV):
+            tp = np.sum((pred == k) & (y == k))
+            fp = np.sum((pred == k) & (y != k))
+            fn = np.sum((pred != k) & (y == k))
+            pres = tp / (tp + fp) if tp + fp else 0.0
+            gjen = tp / (tp + fn) if tp + fn else 0.0
+            f1er.append(2 * pres * gjen / (pres + gjen) if pres + gjen else 0.0)
+        return float(np.mean(f1er))
+
+    beste, beste_score = (6.0, 0.55), -1.0
+    for e in energi_kandidater:
+        er_hendelse = styrker >= e
+        for c in koherens_kandidater:
+            pred = np.where(~er_hendelse, BAKGRUNN,
+                            np.where(koherenser > c, JORDSKJELV, BIL))
+            score = makro_f1(pred)
+            if score > beste_score:
+                beste_score, beste = score, (float(e), float(c))
+
+    print(f"  Tilpassede terskler: energi={beste[0]:.2f}, koherens={beste[1]:.2f} "
+          f"(makro-F1 pa treningsdata: {beste_score:.3f})")
+    return beste
 
 
 def estimer_fart(

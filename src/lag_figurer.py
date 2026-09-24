@@ -161,6 +161,117 @@ def fig1b_glitch_vs_skjelv():
     plotting.lagre(fig, "fig1b_glitch_vs_skjelv.png")
 
 
+
+def fig2_klassifikator():
+    """
+    Figur 2: resultatene fra fase 2+3, og den viktigste innsikten i dem.
+
+    Figuren er bygget rundt et funn som snudde konklusjonen vår: CNN-et vinner klart på
+    syntetiske data, men FEILER på ekte data, mens den enkle toterskel-regelen overfører
+    perfekt. Forklaringen er at referansen koder fysikk — hvor stor del av fiberen som
+    rister samtidig — mens nettet har lært teksturen i vår egen støymodell.
+
+    Krever at `python3 -m src.classifier` er kjørt først (lagrer resultat-JSON).
+    """
+    import json
+    from .features import estimer_fart
+    from .synthetic_das import DASKonfig, farget_stoy, legg_til_bil
+
+    sti = plotting.FIGURMAPPE.parent / "data" / "processed" / "resultater_fase23.json"
+    if not sti.exists():
+        print(f"Mangler {sti} — kjor 'python3 -m src.classifier' forst.")
+        return
+    res = json.loads(sti.read_text())
+
+    klasser = ["bakgrunn", "bil", "jordskjelv"]
+    fig, akser = plt.subplots(1, 3, figsize=(16, 5.0))
+
+    def stolper(ax, data_ref, data_cnn, tittel, undertekst, legend_loc="upper left"):
+        x = np.arange(len(klasser))
+        b = 0.36
+        f_ref = [data_ref[k]["f1"] if data_ref else 0.0 for k in klasser]
+        f_cnn = [data_cnn[k]["f1"] for k in klasser]
+        ax.bar(x - b/2, f_ref, b, label="Referanse (2 terskler)", color="#0369a1")
+        ax.bar(x + b/2, f_cnn, b, label="CNN (22 595 parametre)", color="#b45309")
+        for xi, (a, c) in enumerate(zip(f_ref, f_cnn)):
+            ax.text(xi - b/2, a + 0.02, f"{a:.2f}", ha="center", fontsize=8)
+            ax.text(xi + b/2, c + 0.02, f"{c:.2f}", ha="center", fontsize=8)
+        ax.set_xticks(x); ax.set_xticklabels(klasser)
+        ax.set_ylim(0, 1.15); ax.set_ylabel("F1-score")
+        ax.set_title(tittel, fontsize=11)
+        ax.text(0.5, -0.19, undertekst, transform=ax.transAxes, ha="center",
+                fontsize=8.5, color="#444444")
+        ax.grid(axis="y", alpha=0.25); ax.set_axisbelow(True)
+        ax.legend(fontsize=8, loc=legend_loc)
+
+        # Marker klasser som ikke har noen eksempler i fasiten. Uten dette ser en
+        # nullstolpe ut som om modellene feiler, mens den i virkeligheten betyr at
+        # klassen ikke forekommer i datasettet i det hele tatt.
+        for xi, k in enumerate(klasser):
+            antall = data_cnn[k]["antall"]
+            if antall == 0:
+                ax.text(xi, 0.06, "ingen\neksempler", ha="center", fontsize=7.5,
+                        color="#6b7280", style="italic")
+
+    stolper(akser[0], res["syntetisk"]["referanse"], res["syntetisk"]["cnn"],
+            "SYNTETISKE testdata\nCNN vinner",
+            "1344 utsnitt, delt etter tid med karantenesone")
+    stolper(akser[1], res["ekte"]["referanse"], res["ekte"]["cnn"],
+            "EKTE data (SAFOD)\nReferansen vinner — CNN overforer ikke",
+            "81 utsnitt fra ett jordskjelv. SAFOD er ikke en vei, sa klassen 'bil' finnes ikke her.\n"
+            "Lite utvalg (6 jordskjelvutsnitt): tolk med forsiktighet.",
+            legend_loc="center left")
+
+    # Panel 3: fartsestimat mot fasit.
+    sanne, estimerte, skarpheter = [], [], []
+    for i, fart in enumerate([30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]):
+        for retning in (1, -1):
+            konfig = DASKonfig(seed=300 + i * 2 + (retning > 0))
+            rng = np.random.default_rng(konfig.seed)
+            wf = farget_stoy(konfig, rng)
+            et = np.zeros(wf.shape, dtype=np.int8)
+            legg_til_bil(wf, et, konfig, rng, fart_kmt=fart,
+                         start_m=0.0 if retning > 0 else konfig.veilengde_m,
+                         start_s=0.0, tyngde=1.0, retning=retning)
+            est, skarp = estimer_fart(wf, konfig.kanalavstand_m, konfig.samplingsrate_hz)
+            sanne.append(fart * retning); estimerte.append(est); skarpheter.append(skarp)
+
+    sanne = np.array(sanne); estimerte = np.array(estimerte); skarpheter = np.array(skarpheter)
+    palitelig = skarpheter > 0.3
+
+    ax = akser[2]
+    ax.plot([-140, 140], [-140, 140], "k--", lw=1, alpha=0.5, label="perfekt estimat")
+    ax.scatter(sanne[palitelig], estimerte[palitelig], s=30, color="#15803d",
+               label=f"skarphet > 0.3  (n={palitelig.sum()})", zorder=3)
+    ax.scatter(sanne[~palitelig], estimerte[~palitelig], s=30, color="#dc2626",
+               marker="x", label=f"lav skarphet, forkastes  (n={(~palitelig).sum()})", zorder=3)
+    ax.set_xlabel("Sann fart (km/t)"); ax.set_ylabel("Estimert fart (km/t)")
+    avvik = np.abs(estimerte[palitelig] - sanne[palitelig])
+    ax.set_title(f"Fartsestimat fra stigning\nMedianavvik {np.median(avvik):.1f} km/t", fontsize=11)
+    ax.legend(fontsize=8, loc="upper left"); ax.grid(alpha=0.25)
+    ax.text(0.5, -0.19, "Negativ fart = motsatt kjoreretning. Skarphet flagger upalitelige estimater selv.",
+            transform=ax.transAxes, ha="center", fontsize=8.5, color="#444444")
+
+    for ax in akser[:2]:
+        ax.text(0.985, 0.975, "SYNTETISK" if ax is akser[0] else "EKTE DATA",
+                transform=ax.transAxes, fontsize=8, fontweight="bold", color="white",
+                va="top", ha="right",
+                bbox=dict(boxstyle="round,pad=0.35",
+                          facecolor=plotting.FARGE_SYNTETISK if ax is akser[0] else plotting.FARGE_EKTE,
+                          edgecolor="none"))
+    akser[2].text(0.985, 0.03, "SYNTETISK", transform=akser[2].transAxes, fontsize=8,
+                  fontweight="bold", color="white", va="bottom", ha="right",
+                  bbox=dict(boxstyle="round,pad=0.35", facecolor=plotting.FARGE_SYNTETISK,
+                            edgecolor="none"))
+
+    fig.suptitle("Fase 2+3: bil og jordskjelv — og hvorfor den enkle modellen vant til slutt",
+                 fontsize=14, fontweight="bold", y=1.03)
+    fig.tight_layout()
+    plotting.lagre(fig, "fig2_klassifikator.png")
+
+
+
 if __name__ == "__main__":
     fig1_waterfall_sammenligning()
     fig1b_glitch_vs_skjelv()
+    fig2_klassifikator()
