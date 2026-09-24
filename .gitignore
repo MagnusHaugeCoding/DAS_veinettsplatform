@@ -1,0 +1,21 @@
+# Data holdes utenfor git. Én enkelt DAS-fil er ~48 MB, og git er bygget for tekst,
+# ikke for store binærfiler. Dataene kan lastes ned på nytt med src/real_data.py,
+# så vi mister ingenting ved å utelate dem.
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Virtuelt miljø: hundrevis av MB pakker som hører til maskinen, ikke prosjektet.
+.venv/
+venv/
+
+# Pythons kompilerte mellomfiler. Genereres automatisk, har ingen verdi i git.
+__pycache__/
+*.pyc
+
+# macOS-rot
+.DS_Store
+
+# MERK: figures/ er IKKE ignorert. Figurene er selve leveransen til pitchen,
+# og de skal være synlige i repoet for juryen.

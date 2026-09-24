@@ -1,0 +1,12 @@
+# Avhengigheter for "Trygg ferdsel med DAS".
+# Versjonene er pinnet (==) til det som er verifisert kjørende, slik at
+# `pip install -r requirements.txt` gir samme miljø på en annen maskin.
+# Bevisst holdt til få og vanlige pakker: ingen DAS-spesifikke biblioteker
+# (mldas, jDAS, lightguide) er nødvendige for det vi gjør.
+
+numpy==2.1.0         # matriser; all DAS-data er en kanal x tid-matrise
+scipy==1.16.3        # filtrering og spektralanalyse (frekvensbånd, signalbehandling)
+matplotlib==3.10.8   # waterfall-plott og pitch-figurer
+tensorflow==2.20.0   # Keras: CNN-klassifikator og autoencoder
+pandas==2.3.3        # tabeller (jordskjelvkatalog, resultatoppsummering)
+streamlit==1.64.0   # demo-appen: rute, fargekoding og avspilling av scenario
